@@ -37,7 +37,7 @@ We do not sell, share, or expose your data to third parties.
 
 ## 3. 🧵 Data Storage & Security
 
-Artisan stores data in a secure environment (e.g. MongoDB or Azure Cosmos DB). Access is restricted to authorized maintainers.
+As of initial publishing, Artisan stores data in a file-based database (Sqlite) for ease of portability as this is an open source bot. However, if funding allows, I would be willing to upgrade to a more secure environment (e.g. MongoDB or Azure Cosmos DB) and host the bot globally for anyone else that wants a subscription. Access to the Sqlite database is also currently restricted to authorized maintainers.
 
 We take reasonable steps to protect your data from unauthorized access, alteration, or deletion.
 
@@ -76,7 +76,7 @@ To exercise these rights, contact the bot maintainer via Discord or GitHub.
 For questions or concerns about this policy, reach out to:
 
 Discord: **@burntorangejedi**  
-GitHub: [https://github.com/burntorangejedi/artisan](https://github.com/burntorangejedi/artisan)
+GitHub: [https://github.com/burntorangejedi/artisan-bot](https://github.com/burntorangejedi/artisan-bot)
 
 ---
 

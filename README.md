@@ -1,3 +1,5 @@
+![Artisan-Bot Banner](branding/banner.png)
+
 # 🛠️ Artisan
 
 **Artisan** is Compulsion’s custom Discord bot for managing World of Warcraft professions, recipes, and crafter coordination. Built with Node.js and Discord.js, Artisan streamlines guild crafting workflows with precision and polish.

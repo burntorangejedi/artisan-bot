@@ -9,7 +9,7 @@ module.exports = {
     const embed = new EmbedBuilder()
       .setTitle('Artisan Terms of Service')
       .setDescription('Click the link below to view the full Terms of Service.')
-      .setURL('https://github.com/burntorangejedi/artisan-bot/TERMS.md')
+      .setURL('https://github.com/burntorangejedi/artisan-bot/blob/main/TERMS.md')
       .setColor(0xFF8C00); // warm orange
     await interaction.reply({ embeds: [embed], ephemeral: true });
   },
