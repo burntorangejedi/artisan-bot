@@ -1,5 +1,9 @@
 require('dotenv').config();
-console.log('DISCORD_TOKEN:', process.env.DISCORD_TOKEN);
+
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
+const debug = require('./data/debug');
 const { REST, Routes } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -13,18 +17,18 @@ for (const file of commandFiles) {
   commands.push(command.data.toJSON());
 }
 
-const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
 
 (async () => {
   try {
-    console.log('Started refreshing application (/) commands.');
+    debug.log('Started refreshing application (/) commands.');
 
     await rest.put(
-      Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
       { body: commands },
     );
 
-    console.log('Successfully reloaded application (/) commands.');
+    debug.log('Successfully reloaded application (/) commands.');
   } catch (error) {
     console.error(error);
   }

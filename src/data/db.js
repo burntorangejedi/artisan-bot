@@ -1,11 +1,12 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-
+const debug = require('./debug');
 const dbPath = path.resolve(__dirname, '../../guilddata.sqlite');
 const db = new sqlite3.Database(dbPath);
 
 // Create tables if they don't exist
 db.serialize(() => {
+  debug.log('Initializing database tables...');
   db.run(`
     CREATE TABLE IF NOT EXISTS guild_members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,6 +34,8 @@ db.serialize(() => {
       FOREIGN KEY(profession_id) REFERENCES professions(id)
     )
   `);
+  debug.log('syncguild: command finished');
+
 });
 
 module.exports = db;

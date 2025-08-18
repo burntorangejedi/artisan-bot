@@ -1,31 +1,34 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const axios = require('axios');
 const db = require('../data/db');
-const debugFlag = require('../data/debug');
+const debug = require('../data/debug');
+
 require('dotenv').config();
 
-const REGION = process.env.REGION;
-const LOCALE = 'en_US';
+const REGION = process.env.REGION || 'us';
+const LOCALE = process.env.LOCALE || 'en_US';
+const BLIZZARD_CLIENT_ID = process.env.BLIZZARD_CLIENT_ID;
+const BLIZZARD_CLIENT_SECRET = process.env.BLIZZARD_CLIENT_SECRET;
 
 async function getBlizzardAccessToken() {
-  console.log('Fetching accessToken from Blizzard API...');
-  console.log('Using REGION:', REGION);
-  console.log('Using LOCALE:', LOCALE);
-  console.log('Using BLIZZARD_CLIENT_ID:', process.env.BLIZZARD_CLIENT_ID);
-  console.log('Using BLIZZARD_CLIENT_SECRET:', process.env.BLIZZARD_CLIENT_SECRET);
+  debug.log('Fetching accessToken from Blizzard API...');
+  debug.log('Using REGION:', REGION);
+  debug.log('Using LOCALE:', LOCALE);
+  debug.log('Using BLIZZARD_CLIENT_ID:', BLIZZARD_CLIENT_ID);
+  debug.log('Using BLIZZARD_CLIENT_SECRET:', BLIZZARD_CLIENT_SECRET);
 
   const response = await axios.post(
     `https://${REGION}.battle.net/oauth/token`,
     'grant_type=client_credentials',
     {
       auth: {
-        username: process.env.BLIZZARD_CLIENT_ID,
-        password: process.env.BLIZZARD_CLIENT_SECRET,
+        username: BLIZZARD_CLIENT_ID,
+        password: BLIZZARD_CLIENT_SECRET,
       },
     }
   );
 
-  console.log('Fetched accessToken: ', response.data.access_token);
+  debug.log('Fetched accessToken: ', response.data.access_token);
 
   return response.data.access_token;
 }
@@ -34,18 +37,20 @@ async function getGuildRoster(accessToken) {
   const realm = process.env.REALM.toLowerCase().replace(/'/g, '').replace(/ /g, '-');
   const guild = process.env.GUILD_NAME.toLowerCase().replace(/'/g, '').replace(/ /g, '-');
   const url = `https://${REGION}.api.blizzard.com/data/wow/guild/${realm}/${guild}/roster?namespace=profile-${REGION}&locale=${LOCALE}`;
-  console.log('Guild roster URL:', url);
+  debug.log('Guild roster URL:', url);
   const response = await axios.get(url, {
     headers: {
       Authorization: `Bearer ${accessToken}`
     }
   });
+  debug.log('Fetched guild roster:', response.data.members.length, "members");
   return response.data.members;
 }
 
 // Fetch professions for a character
 async function getCharacterProfessions(realmSlug, charName, token) {
   const url = `https://${REGION}.api.blizzard.com/profile/wow/character/${realmSlug}/${charName.toLowerCase()}/professions?namespace=profile-${REGION}&locale=${LOCALE}`;
+  debug.log('Fetching character professions from:', url);
   try {
     const response = await axios.get(url, {
       headers: {
@@ -69,14 +74,16 @@ module.exports = {
       return interaction.reply({ content: 'Only the guild admin can use this command.', ephemeral: true });
     }
 
+    debug.log('syncguild: command started');
     await interaction.reply('Fetching guild roster and professions from Blizzard API...');
+
+    const startTime = Date.now(); // <-- Start timer
 
     try {
       const accessToken = await getBlizzardAccessToken();
-      debugFlag.debugLog('Fetched accessToken:', accessToken);
+      debug.log('syncguild: Access token ' + accessToken);
       const members = await getGuildRoster(accessToken);
-      debugFlag.debugLog('Fetched guild roster:', members);
-
+      debug.log('syncguild: Fetched members:', members.length);
 
       // Clear out guild_members, professions, and recipes tables
       db.serialize(async () => {
@@ -84,7 +91,7 @@ module.exports = {
         db.run('DELETE FROM professions');
         db.run('DELETE FROM guild_members', [], async (err) => {
           if (err) {
-            console.error(err);
+            console.error('DB error: ', err);
             return interaction.followUp('Failed to clear guild members table.');
           }
 
@@ -109,13 +116,14 @@ module.exports = {
                 // Fetch and insert professions
                 getCharacterProfessions(realmSlug, charName, accessToken).then(async profData => {
 
-                  debugFlag.debugLog('Professions API response for', charName, JSON.stringify(profData, null, 2));
+                  // debug.log('Professions API response for', charName, JSON.stringify(profData, null, 2));
 
                   const allProfs = [];
                   if (profData && profData.primaries) allProfs.push(...profData.primaries);
                   if (profData && profData.secondaries) allProfs.push(...profData.secondaries);
 
                   for (const prof of allProfs) {
+
                     await new Promise((profResolve) => {
                       profStmt.run(memberId, prof.profession.name, prof.skill_level, function (err) {
                         if (err) {
@@ -123,7 +131,6 @@ module.exports = {
                           return profResolve();
                         }
                         const professionId = this.lastID;
-
                         // Insert known recipes for this profession (across all tiers)
                         if (prof.tiers && Array.isArray(prof.tiers)) {
                           for (const tier of prof.tiers) {
@@ -134,7 +141,6 @@ module.exports = {
                             }
                           }
                         }
-
                         profResolve();
                       });
                     });
@@ -150,10 +156,14 @@ module.exports = {
           profStmt.finalize();
           recipeStmt.finalize();
 
-          interaction.followUp(`Guild roster, professions, and recipes synced! ${members.length} members imported.`);
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(2); // <-- Calculate elapsed time
+          
+          debug.log(`syncguild: Command finished! Imported ${imported} members in ${elapsed} seconds`);
+          interaction.followUp(`Guild roster, professions, and recipes synced! ${members.length} members imported in ${elapsed} seconds.`);
         });
       });
     } catch (err) {
+      console.error('DB error: ', err);
       console.error(err);
       await interaction.followUp('Failed to fetch guild roster or professions from Blizzard API.');
     }

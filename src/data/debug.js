@@ -1,6 +1,6 @@
-let debug = false;
+let debug = true;
 
-function debugLog(...args) {
+function log(...args) {
   if (debug) {
     const formatted = args.map(arg =>
       typeof arg === 'object'
@@ -14,5 +14,5 @@ function debugLog(...args) {
 module.exports = {
   isDebug: () => debug,
   setDebug: (val) => { debug = val; },
-  debugLog
+  log: log
 };
