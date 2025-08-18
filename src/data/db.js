@@ -11,7 +11,12 @@ db.serialize(() => {
     CREATE TABLE IF NOT EXISTS guild_members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT UNIQUE,
-      discord_id TEXT
+      realm TEXT,
+      discord_id TEXT,
+      class TEXT,
+      spec TEXT,
+      role TEXT,
+      is_main INTEGER DEFAULT 0
     )
   `);
 
@@ -34,8 +39,7 @@ db.serialize(() => {
       FOREIGN KEY(profession_id) REFERENCES professions(id)
     )
   `);
-  debug.log('syncguild: command finished');
-
+    debug.log("... database table creation complete!")
 });
 
 module.exports = db;
