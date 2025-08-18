@@ -4,89 +4,78 @@
 
 ---
 
-## ✨ Features
+## 🚀 Quickstart: Setting Up Artisan for Your Guild
 
-- 🔍 **Crafter Search** – Find guild members by profession, skill level, or specific recipe  
-- 📬 **Ping System** – Notify available crafters with cooldown-aware alerts  
-- 🔄 **Admin Sync** – Sync profession data from the in-game addon to Discord  
-- 📊 **Recipe Tracker** – View who can craft what, with filters and tags  
-- 🧩 **Modular Roles** – Auto-assign roles based on profession or availability  
+**If you’re starting fresh (e.g., initial install, or after deleting the database), follow these steps:**
+
+1. **Delete the old database file**  
+   Remove your SQLite database file (e.g., `guilddata.sqlite`) from the project directory. This step is (obviously) optional as it does a full purge of all the data used by the bot. Recommended if things get completely out of sync, and then register an issue with me here on GitHub. 
+
+2. **Restart the bot**  
+   This will recreate the database tables automatically.
+
+3. **Create all Discord roles**  
+   Run the following command in your Discord server (admin only):  
+   ```
+   /guild-roles add
+   ```
+   This will create all class/spec, main role, and profession roles with appropriate colors.
+
+4. **Sync the guild roster and professions**  
+   Run:  
+   ```
+   /syncguild
+   ```
+   This fetches the latest roster and profession/spec data from Blizzard and populates the database.
+
+5. **Have members claim their characters**  
+   Each guild member should run:  
+   ```
+   /claim character <character name>
+   ```
+   This links their Discord account to their character(s) and automatically assigns the correct class/spec, main role, and profession roles.
+
+   Optionally, the bot support providing multiple character names with the command, but intellisense / autocomplete is not available for any but the first character. e.g.
+   ```
+   /claim character Toon1 Toon2 Toon3
+   ```
+      Might not even want to mention it to your guildies, but I included it here because I was too lazy to type the command over and over again for my own characters.
+
+6. **(Optional) List claimed characters**  
+   Members can see their claimed characters with:  
+   ```
+   /claim list
+   ```
+
+7. **(Optional) Remove all roles created by the bot**  
+   If you need to clean up, run:  
+   ```
+   /guild-roles remove
+   ```
 
 ---
 
-## 🚀 Getting Started
+## 🧩 Features
 
-### Prerequisites
-
-- Node.js v18+  
-- Discord bot token  
-- MongoDB or Azure Cosmos DB (optional for persistence)  
-
-### Installation
-
-    git clone https://github.com/yourusername/artisan  
-    cd artisan  
-    npm install
-
-### Configuration
-
-Create a `.env` file in the root directory with the following:
-
-    DISCORD_TOKEN=your_token_here  
-    GUILD_ID=your_guild_id  
-    PREFIX=!
-
----
-
-## 🧪 Usage
-
-Use the following slash commands:
-
-- /search [profession] – Find crafters by skill or recipe  
-- /ping [recipe] – Notify available members with crafting capability  
-- /sync – Admin-only command to update data from the WoW addon  
-
----
-
-## 🧱 Architecture
-
-    artisan/  
-    ├── src/  
-    │   ├── commands/       – Slash command handlers  
-    │   ├── services/       – API and data sync logic  
-    │   ├── utils/          – Helper functions and embed builders  
-    │   ├── config/         – Role mappings and guild settings  
-    │   └── index.js        – Bot entry point  
-    ├── .env                – Environment variables  
-    ├── package.json        – Dependencies and scripts  
-    └── README.md           – You're here!
+- **Automatic role assignment** for class/spec, main role (Tank/Healer/DPS), and professions when a character is claimed
+- **Profession and recipe search** with `/whohas`
+- **Easy guild roster and profession syncing** with `/syncguild`
+- **Admin commands** for bulk role management
 
 ---
 
 ## 🤝 Contributing
 
-We welcome contributions from guild members and the community.
-For detailed guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-Please submit pull requests with clear descriptions and test coverage.
-
-
----
-
-## 📜 License
-
-This project is licensed under the MIT License. See `LICENSE.md` for details.
-
----
-
-## 🧵 Credits
-
-Crafted with care by the Compulsion guild.  
-Bot architecture by [burntorangejedi](https://github.com/burntorangejedi), with support from GitHub Copilot, our officer team, and our community testers.
+We welcome contributions!  
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
 ## 💬 Support
 
 Need help or want to suggest a feature?  
-Ping `@burntorangejedi` in Discord or open an issue at [github.com/burntorangejedi/artisan-bot/issues](https://github.com/burntorangejedi/artisan-bot/issues)
+Ping **@burntorangejedi** in Discord or open an issue at [github.com/burntorangejedi/artisan-bot/issues](https://github.com/burntorangejedi/artisan-bot/issues)
+
+---
+
+**Enjoy!**
