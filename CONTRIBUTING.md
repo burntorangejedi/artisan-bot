@@ -21,7 +21,7 @@ Artisan is built for clarity, inclusivity, and officer-proof workflows. Contribu
 
 Create your own fork of the project and clone it locally:
 ```
-    git clone https://github.com/burntorangejedi/artisan
+    git clone https://github.com/burntorangejedi/artisan-bot
 ```
 ### 2. Create a Branch
 
@@ -48,7 +48,7 @@ Push your branch and open a PR with:
 - Notes on any new config or `.env` variables  
 
 Open your pull request here:  
-[https://github.com/burntorangejedi/artisan/pulls](https://github.com/burntorangejedi/artisan/pulls)
+[https://github.com/burntorangejedi/artisan-bot/pulls](https://github.com/burntorangejedi/artisan-bot/pulls)
 
 ---
 
@@ -75,12 +75,11 @@ Looking for ways to contribute? Here are some open ideas:
 
 ## 🧵 Need Help?
 
-Ping <@512839235921772544> in Discord or open a discussion in GitHub Issues:  
-[https://github.com/burntorangejedi/artisan/issues](https://github.com/burntorangejedi/artisan/issues)
+Ping me in Discord (@BurntOrangeJedi) or open a discussion in GitHub Issues:  
+[https://github.com/burntorangejedi/artisan-bot/issues](https://github.com/burntorangejedi/artisan-bot/issues)
 
 We’re happy to pair-program, review your PR, or help you get started.
 
 ---
 
 Thanks again for helping make Artisan better for the Compulsion guild, and anyone else who wants to use it!
-
