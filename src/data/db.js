@@ -7,22 +7,30 @@ const db = new sqlite3.Database(dbPath);
 // Create tables if they don't exist
 db.serialize(() => {
   db.run(`
-    CREATE TABLE IF NOT EXISTS toons (
+    CREATE TABLE IF NOT EXISTS guild_members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      discord_id TEXT,
-      toon_name TEXT,
+      name TEXT UNIQUE,
+      discord_id TEXT
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS professions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      member_id INTEGER,
       profession TEXT,
-      skill_level INTEGER
+      skill_level INTEGER,
+      FOREIGN KEY(member_id) REFERENCES guild_members(id)
     )
   `);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS recipes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      toon_id INTEGER,
+      profession_id INTEGER,
       recipe_name TEXT,
       known INTEGER,
-      FOREIGN KEY(toon_id) REFERENCES toons(id)
+      FOREIGN KEY(profession_id) REFERENCES professions(id)
     )
   `);
 });
