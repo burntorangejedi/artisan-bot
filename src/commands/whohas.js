@@ -29,19 +29,13 @@ module.exports = {
       opt.setName('recipe')
         .setDescription('Recipe name (partial match allowed)')
         .setRequired(true)
-    )
-    .addBooleanOption(opt =>
-      opt.setName('details')
-        .setDescription('Show extra details (skill level, etc.)')
-        .setRequired(false)
     ),
   async execute(interaction) {
     const recipeName = interaction.options.getString('recipe');
-    const showDetails = interaction.options.getBoolean('details');
 
     db.all(
       `
-      SELECT gm.name AS member, p.profession, p.skill_level, r.recipe_name
+      SELECT gm.name AS member, p.profession, p.skill_level, r.recipe_name, gm.discord_id
       FROM recipes r
       JOIN professions p ON r.profession_id = p.id
       JOIN guild_members gm ON p.member_id = gm.id
@@ -56,16 +50,40 @@ module.exports = {
         if (!rows.length) {
           return interaction.reply(`No guild member can craft a recipe matching "${recipeName}".`);
         }
-        const results = rows.map(row => {
-          if (showDetails) {
-            return `${row.member.padEnd(18)} | ${row.profession.padEnd(15)} | skill: ${row.skill_level ?? 'unknown'} | ${row.recipe_name}`;
-          } else {
-            return `${row.member.padEnd(18)} | ${row.profession.padEnd(15)} | ${row.recipe_name}`;
-          }
-        });
 
-        const header = `**Crafters for "${recipeName}":**`;
-        const messages = splitMessage(header, results);
+        // Fetch Discord usernames for claimed characters
+        const discordNames = {};
+        for (const row of rows) {
+          if (row.discord_id && !discordNames[row.discord_id]) {
+            try {
+              const user = await interaction.client.users.fetch(row.discord_id);
+              discordNames[row.discord_id] = user ? user.username : '-';
+            } catch {
+              discordNames[row.discord_id] = '-';
+            }
+          }
+        }
+
+        let headerLine = `Character           | Discord Name        | Profession     | Skill   | Recipe`;
+        let separatorLine = `--------------------|---------------------|----------------|---------|---------------------`;
+
+        const results = rows.map(row =>
+          `${row.member.padEnd(20)}| ${(
+            row.discord_id ? discordNames[row.discord_id] : '-'
+          ).padEnd(20)}| ${row.profession.padEnd(15)}| ${String(row.skill_level ?? 'unknown').padEnd(8)}| ${row.recipe_name}`
+        );
+
+        const claimedMentions = rows
+          .filter(row => row.discord_id)
+          .map(row => `<@${row.discord_id}>`);
+
+        const header = `**Crafters for "${recipeName}":**` +
+          (claimedMentions.length
+            ? `\nClaimed by: ${[...new Set(claimedMentions)].join(', ')}`
+            : '');
+
+        const codeHeader = `${headerLine}\n${separatorLine}`;
+        const messages = splitMessage(header, [codeHeader, ...results]);
 
         // Send the first message as the reply, the rest as follow-ups
         await interaction.reply(messages[0]);
