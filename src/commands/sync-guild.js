@@ -1,5 +1,4 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
-const debug = require('../data/debug');
 
 const {
   getBlizzardAccessToken,
@@ -15,7 +14,8 @@ const {
   deleteDepartedMembers
 } = require('../data/guildSyncDb');
 
-const { SPEC_ROLE_MAP } = require('../constants/roles');
+const { getMainRoleForSpecClass, SPEC_ROLE_MAP } = require('../constants/roles');
+
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -27,7 +27,6 @@ module.exports = {
       return interaction.reply({ content: 'Only the guild admin can use this command.', ephemeral: true });
     }
 
-    debug.log('sync-guild: command started');
     await interaction.deferReply();
 
     const startTime = Date.now();
@@ -35,9 +34,7 @@ module.exports = {
 
     try {
       const accessToken = await getBlizzardAccessToken();
-      debug.log('sync-guild: Access token ' + accessToken);
       const members = await getGuildRoster(accessToken);
-      debug.log('syncguild: Fetched members count:', members.length);
 
       // Gather all current guild character names and realms
       const currentNamesRealms = members.map(m => ({
@@ -76,8 +73,6 @@ module.exports = {
             charRole = getMainRoleForSpecClass(charSpec, charClass);
           }
 
-          debug.log(`sync-guild: Processing ${charName} (${realmSlug}) - Class: ${charClass}, Spec: ${charSpec}, Role: ${charRole}`);
-
           // Upsert guild member and get memberId
           const memberId = await upsertGuildMember({
             name: charName,
@@ -113,7 +108,6 @@ module.exports = {
         await deleteDepartedMembers(currentNamesRealms);
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-        debug.log(`sync-guild: Command finished! Imported ${imported} members in ${elapsed} seconds`);
         await interaction.editReply(`Guild roster, professions, and recipes synced! ${members.length} members imported in ${elapsed} seconds.`);
       });
     } catch (err) {

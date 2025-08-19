@@ -63,8 +63,6 @@ const SPEC_ROLE_MAP = {
 function getMainRoleForSpecClass(spec, charClass) {
     const key = `${spec} ${charClass}`.toLowerCase();
     const result = SPEC_ROLE_MAP[key] || null;
-    debug.log(`getMainRoleForSpecClass: ${key} -> ${result}`);
-    console.log(`getMainRoleForSpecClass: ${key} -> ${result}`);
     return result
 }
 
