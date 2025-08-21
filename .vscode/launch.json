@@ -1,0 +1,16 @@
+{
+  "type": "node",
+  "request": "launch",
+  "name": "Launch Artisan Bot",
+  "program": "${workspaceFolder}/src/index.js",
+  "envFile": "${workspaceFolder}/.env",
+  "configurations": [
+    {
+      "name": "Launch Artisan Bot",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/index.js",
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ]
+}

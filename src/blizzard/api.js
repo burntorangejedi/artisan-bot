@@ -54,7 +54,7 @@ async function getCharacterProfessions(realmSlug, charName, token) {
 
 async function getCharacterSummary(realmSlug, charName, token) {
   const summaryUrl = `https://${REGION}.api.blizzard.com/profile/wow/character/${realmSlug}/${charName.toLowerCase()}?namespace=profile-${REGION}&locale=${LOCALE}`;
-  debug.log('Fetching character Summary from:', summaryUrl);
+  debug.log('Fetching character Summary for:', charName);
   try {
     const response = await axios.get(summaryUrl, {
       headers: {
@@ -84,11 +84,32 @@ async function getCharacterSpecialization(realmSlug, charName, token) {
   }
 }
 
+// Fetch recipe details from Blizzard API by recipe ID
+async function getRecipeDetails(recipeId, accessToken) {
+  const url = `https://${REGION}.api.blizzard.com/data/wow/recipe/${recipeId}?namespace=static-${REGION}&locale=${LOCALE}`;
+  debug.log('Fetching recipe details from:', url);
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+    // The response should contain name and crafted_item (with id)
+    const name = response.data.name && response.data.name[LOCALE] ? response.data.name[LOCALE] : response.data.name;
+    const item_id = response.data.crafted_item ? response.data.crafted_item.id : null;
+    return { name, item_id };
+  } catch (err) {
+    debug.log(`Failed to fetch recipe details for ID ${recipeId}: ${err.response ? err.response.status : err.message}`);
+    return null;
+  }
+}
+
 // Export all functions as an object
 module.exports = {
   getBlizzardAccessToken,
   getGuildRoster,
   getCharacterProfessions,
   getCharacterSummary,
-  getCharacterSpecialization
+  getCharacterSpecialization,
+  getRecipeDetails
 };

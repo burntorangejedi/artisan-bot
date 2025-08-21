@@ -11,6 +11,7 @@
     "@azure/identity": "^4.11.1",
     "@azure/keyvault-secrets": "^4.10.0",
     "axios": "^1.11.0",
+    "cheerio": "^1.1.2",
     "discord.js": "^14.14.1",
     "dotenv": "^16.4.5",
     "luaparse": "^0.3.1",
