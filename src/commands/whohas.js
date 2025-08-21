@@ -1,24 +1,19 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../data/db');
+
 const OUTPUT_STYLE = process.env.WHOHAS_OUTPUT_STYLE || 'table'; // 'table' or 'embed'
 const DISCORD_LIMIT = process.env.DISCORD_LIMIT || 100;
+const WHOHAS_PAGE_SIZE = parseInt(process.env.WHOHAS_PAGE_SIZE, 10) || 10;
 
-function splitMessage(header, lines) {
-  const messages = [];
-  let current = header + '\n```';
-  for (const line of lines) {
-    if ((current + line + '\n').length > DISCORD_LIMIT - 3) { // -3 for closing ```
-      current += '```';
-      messages.push(current.trim());
-      current = '```';
-    }
-    current += line + '\n';
+
+function paginateTable(header, lines, pageSize) {
+  const pages = [];
+  for (let i = 0; i < lines.length; i += pageSize) {
+    const pageLines = lines.slice(i, i + pageSize);
+    const page = header + '\n```' + pageLines.join('\n') + '```';
+    pages.push(page);
   }
-  if (current.trim() !== '```') {
-    current += '```';
-    messages.push(current.trim());
-  }
-  return messages;
+  return pages;
 }
 
 module.exports = {
@@ -89,17 +84,17 @@ module.exports = {
           }
         }
 
-        // Prepare output without quality/breakpoints
+        // Prepare output, sorted by character name
         const results = rows.map(row => ({
           ...row,
           discordName: row.discord_id ? discordNames[row.discord_id] : '-',
-        }));
+        })).sort((a, b) => a.member.localeCompare(b.member));
 
-        let headerLine = `Character           | Discord Name        | Profession     | MaxSkill| Recipe`;
-        let separatorLine = `--------------------|---------------------|----------------|---------|---------------------`;
+        let headerLine = `Character           | Discord Name        | Profession     | Recipe`;
+        let separatorLine = `--------------------|---------------------|----------------|---------------------`;
 
         const lines = results.map(row =>
-          `${row.member.padEnd(20)}| ${row.discordName.padEnd(20)}| ${row.profession.padEnd(15)}| ${String(row.max_skill_level ?? 'unknown').padEnd(8)}| ${row.recipe_name}`
+          `${row.member.padEnd(20)}| ${row.discordName.padEnd(20)}| ${row.profession.padEnd(15)}| ${row.recipe_name}`
         );
 
         const claimedMentions = results
@@ -129,16 +124,69 @@ module.exports = {
 
           await interaction.reply({ embeds: [embed] });
         } else {
-          // Monospaced table output (default)
+          // Monospaced table output (default) with interactive pagination
           const codeHeader = `${headerLine}\n${separatorLine}`;
-          const messages = splitMessage(header, [codeHeader, ...lines]);
+          const pagedLines = [];
+          for (let i = 0; i < lines.length; i += WHOHAS_PAGE_SIZE) {
+            pagedLines.push([codeHeader, ...lines.slice(i, i + WHOHAS_PAGE_SIZE)]);
+          }
 
-          await interaction.reply(messages[0]);
-          for (let i = 1; i < messages.length; i++) {
-            await interaction.followUp(messages[i]);
+          // Helper to build the page content
+          function buildPage(pageIdx) {
+            return {
+              content: `${header}\n\nPage ${pageIdx + 1} of ${pagedLines.length}:\n\n\`\`\`${pagedLines[pageIdx].join('\n')}\`\`\``,
+              components: [
+                {
+                  type: 1, // ActionRow
+                  components: [
+                    {
+                      type: 2, // Button
+                      style: 1, // Primary
+                      label: 'Previous',
+                      custom_id: 'whohas_prev',
+                      disabled: pageIdx === 0
+                    },
+                    {
+                      type: 2, // Button
+                      style: 1, // Primary
+                      label: 'Next',
+                      custom_id: 'whohas_next',
+                      disabled: pageIdx === pagedLines.length - 1
+                    }
+                  ]
+                }
+              ]
+            };
+          }
+
+          let pageIdx = 0;
+          await interaction.reply(buildPage(pageIdx));
+          const replyMsg = await interaction.fetchReply();
+
+          if (pagedLines.length > 1) {
+            const filter = i =>
+              i.user.id === interaction.user.id &&
+              (i.customId === 'whohas_next' || i.customId === 'whohas_prev');
+            const collector = replyMsg.createMessageComponentCollector({ filter, time: 60000 });
+
+            collector.on('collect', async i => {
+              if (i.customId === 'whohas_next' && pageIdx < pagedLines.length - 1) {
+                pageIdx++;
+              } else if (i.customId === 'whohas_prev' && pageIdx > 0) {
+                pageIdx--;
+              }
+              await i.update(buildPage(pageIdx));
+            });
+
+            collector.on('end', async () => {
+              // Disable buttons after timeout
+              try {
+                await replyMsg.edit({ ...buildPage(pageIdx), components: [] });
+              } catch {}
+            });
           }
         }
       }
-    );
+    )
   }
 };

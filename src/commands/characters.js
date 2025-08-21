@@ -2,7 +2,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const db = require('../data/db');
 
 // Profession and role lists (customize as needed)
-const { ALL_PROFESSIONS, MAIN_ROLES, SPEC_ROLE_MAP } = require('../constants/roles');
+const { ALL_PROFESSIONS, MAIN_ROLES, SPEC_ROLE_MAP, getMainRoleForSpecClass } = require('../constants/roles');
 
 // Remove all profession roles
 async function removeOldProfessionRoles(guild, member) {
