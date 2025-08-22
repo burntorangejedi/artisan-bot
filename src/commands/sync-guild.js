@@ -113,37 +113,37 @@ module.exports = {
           }
           debug.verbose(`Processing profession: ${professionName} (id: ${professionId}) for ${charName}`);
 
-          // Gather all known recipe IDs for this character/profession
-          let knownRecipeIds = [];
+          // Gather all known Blizzard recipe IDs for this character/profession
+          let knownBlizzRecipeIds = [];
           if (prof.tiers && Array.isArray(prof.tiers)) {
             for (const tier of prof.tiers) {
               if (tier.known_recipes && Array.isArray(tier.known_recipes)) {
-                knownRecipeIds.push(...tier.known_recipes.map(r => r.id));
+                knownBlizzRecipeIds.push(...tier.known_recipes.map(r => r.id));
               }
             }
           }
 
-          // Get all recipe IDs for this profession from the recipes table
-          const allRecipeRows = await new Promise((resolve, reject) => {
-            db.all(
-              `SELECT id FROM recipes WHERE profession_id = ?`,
-              [professionId],
-              (err, rows) => {
-                if (err) return reject(err);
-                resolve(rows);
-              }
-            );
-          });
-          const allRecipeIds = allRecipeRows.map(r => r.id);
-
-          // Only keep known recipes that exist in the recipes table
-          const validKnownRecipeIds = knownRecipeIds.filter(id => allRecipeIds.includes(id));
+          // Map Blizzard recipe IDs to internal recipes.id
+          let validRecipeRows = [];
+          if (knownBlizzRecipeIds.length) {
+            validRecipeRows = await new Promise((resolve, reject) => {
+              db.all(
+                `SELECT id, recipe_id FROM recipes WHERE profession_id = ? AND recipe_id IN (${knownBlizzRecipeIds.map(() => '?').join(',')})`,
+                [professionId, ...knownBlizzRecipeIds],
+                (err, rows) => {
+                  if (err) return reject(err);
+                  resolve(rows);
+                }
+              );
+            });
+          }
+          const validRecipeIds = validRecipeRows.map(r => r.id);
 
           // Remove any character_recipes for this member/profession that are no longer known
           await new Promise((resolve, reject) => {
             db.run(
-              `DELETE FROM character_recipes WHERE member_id = ? AND profession_id = ? AND recipe_id NOT IN (${validKnownRecipeIds.length ? validKnownRecipeIds.map(() => '?').join(',') : 'NULL'})`,
-              [memberId, professionId, ...validKnownRecipeIds],
+              `DELETE FROM character_recipes WHERE member_id = ? AND profession_id = ? AND recipe_id NOT IN (${validRecipeIds.length ? validRecipeIds.map(() => '?').join(',') : 'NULL'})`,
+              [memberId, professionId, ...validRecipeIds],
               err => {
                 if (err) debug.log(`Error cleaning up old character_recipes for ${charName} (${professionName}):`, err);
                 resolve();
@@ -152,7 +152,7 @@ module.exports = {
           });
 
           // Insert or update character_recipes for all valid known recipes
-          for (const recipeId of validKnownRecipeIds) {
+          for (const recipeId of validRecipeIds) {
             await upsertCharacterRecipe(memberId, professionId, recipeId);
           }
         }
