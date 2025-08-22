@@ -1,4 +1,5 @@
 const db = require('./db');
+const debug = require('./debug');
 
 // Upsert (insert or update) a guild member by name and realm
 async function upsertGuildMember({ name, realm, charClass, charSpec, charRole }) {
@@ -8,7 +9,7 @@ async function upsertGuildMember({ name, realm, charClass, charSpec, charRole })
             [name, realm],
             (err, row) => {
                 if (err) {
-                    console.error('[DB] upsertGuildMember SELECT error:', err);
+                    debug.log('[DB] upsertGuildMember SELECT error:', { err, name, realm });
                     return reject(err);
                 }
                 if (row) {
@@ -17,7 +18,7 @@ async function upsertGuildMember({ name, realm, charClass, charSpec, charRole })
                         [charClass, charSpec, charRole, row.id],
                         err2 => {
                             if (err2) {
-                                console.error('[DB] upsertGuildMember UPDATE error:', err2);
+                                debug.log('[DB] upsertGuildMember UPDATE error:', { err2, name, realm, row });
                                 return reject(err2);
                             }
                             resolve(row.id);
@@ -29,7 +30,7 @@ async function upsertGuildMember({ name, realm, charClass, charSpec, charRole })
                         [name, realm, charClass, charSpec, charRole],
                         function (err2) {
                             if (err2) {
-                                console.error('[DB] upsertGuildMember INSERT error:', err2);
+                                debug.log('[DB] upsertGuildMember INSERT error:', { err2, name, realm });
                                 return reject(err2);
                             }
                             resolve(this.lastID);
@@ -44,9 +45,13 @@ async function upsertGuildMember({ name, realm, charClass, charSpec, charRole })
 
 // Get profession id by name
 async function getProfessionIdByName(name) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         db.get('SELECT id FROM professions WHERE name = ?', [name], (err, row) => {
-            if (err || !row) return resolve(null);
+            if (err) {
+                debug.log('[DB] getProfessionIdByName error:', { err, name });
+                return reject(err);
+            }
+            if (!row) return resolve(null);
             resolve(row.id);
         });
     });
@@ -60,7 +65,7 @@ async function upsertRecipe(professionId, recipeName, itemId = null) {
             [professionId, recipeName],
             (err, row) => {
                 if (err) {
-                    console.error('[DB] upsertRecipe SELECT error:', err);
+                    debug.log('[DB] upsertRecipe SELECT error:', { err, professionId, recipeName });
                     return reject(err);
                 }
                 if (row) return resolve(row.id);
@@ -69,7 +74,7 @@ async function upsertRecipe(professionId, recipeName, itemId = null) {
                     [professionId, recipeName, itemId],
                     function (err2) {
                         if (err2) {
-                            console.error('[DB] upsertRecipe INSERT error:', err2);
+                            debug.log('[DB] upsertRecipe INSERT error:', { err2, professionId, recipeName, itemId });
                             return reject(err2);
                         }
                         resolve(this.lastID);
@@ -89,7 +94,7 @@ async function upsertCharacterRecipe(memberId, professionId, recipeId) {
             [memberId, professionId, recipeId],
             function (err) {
                 if (err) {
-                    console.error('[DB] upsertCharacterRecipe INSERT error:', err);
+                    debug.log('[DB] upsertCharacterRecipe INSERT error:', { err, memberId, professionId, recipeId });
                     return reject(err);
                 }
                 resolve(this.lastID);
@@ -102,10 +107,13 @@ async function upsertCharacterRecipe(memberId, professionId, recipeId) {
 async function deleteDepartedMembers(currentNamesRealms) {
     return new Promise((resolve, reject) => {
         db.all(
-            `SELECT name, realm FROM guild_members`,
+            `SELECT id, name, realm FROM guild_members`,
             [],
             (err, rows) => {
-                if (err) return reject(err);
+                if (err) {
+                    debug.log('[DB] deleteDepartedMembers SELECT error:', err);
+                    return reject(err);
+                }
                 const toDelete = rows.filter(row =>
                     !currentNamesRealms.some(nr => nr.name === row.name && nr.realm === row.realm)
                 );
@@ -113,11 +121,18 @@ async function deleteDepartedMembers(currentNamesRealms) {
                 if (pending === 0) return resolve();
                 for (const del of toDelete) {
                     db.run(
-                        `DELETE FROM guild_members WHERE name = ? AND realm = ?`,
-                        [del.name, del.realm],
+                        `DELETE FROM character_recipes WHERE member_id = ?`,
+                        [del.id],
                         err2 => {
-                            if (err2) console.error(`Error deleting departed member ${del.name} (${del.realm}):`, err2);
-                            if (--pending === 0) resolve();
+                            if (err2) debug.log(`[DB] Error deleting character_recipes for departed member ${del.name} (${del.realm}):`, err2);
+                            db.run(
+                                `DELETE FROM guild_members WHERE id = ?`,
+                                [del.id],
+                                err3 => {
+                                    if (err3) debug.log(`[DB] Error deleting departed member ${del.name} (${del.realm}):`, err3);
+                                    if (--pending === 0) resolve();
+                                }
+                            );
                         }
                     );
                 }

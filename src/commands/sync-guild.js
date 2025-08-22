@@ -101,6 +101,7 @@ module.exports = {
 
         debug.verbose(`Professions found for ${charName}: ${allProfs.map(p => p.profession.name).join(', ')}`);
 
+
         const tRecipesStart = Date.now();
         for (const prof of allProfs) {
           const professionName = prof.profession.name;
@@ -112,36 +113,47 @@ module.exports = {
           }
           debug.verbose(`Processing profession: ${professionName} (id: ${professionId}) for ${charName}`);
 
-          // Insert known recipes for this profession (across all tiers)
+          // Gather all known recipe IDs for this character/profession
+          let knownRecipeIds = [];
           if (prof.tiers && Array.isArray(prof.tiers)) {
             for (const tier of prof.tiers) {
               if (tier.known_recipes && Array.isArray(tier.known_recipes)) {
-                for (const recipe of tier.known_recipes) {
-                  // Try to get recipe details from Blizzard API, with in-memory cache
-                  let recipeName = recipe.name;
-                  let itemId = null;
-                  let details = null;
-                  if (recipe.id) {
-                    if (recipeDetailsCache[recipe.id]) {
-                      details = recipeDetailsCache[recipe.id];
-                    } else {
-                      details = await getRecipeDetails(recipe.id, accessToken);
-                      if (details) recipeDetailsCache[recipe.id] = details;
-                    }
-                    if (details) {
-                      recipeName = details.name || recipeName;
-                      itemId = details.item_id;
-                    }
-                  }
-                  debug.verbose(`Upserting recipe: ${recipeName} (itemId: ${itemId}) for professionId: ${professionId}`);
-                  // Insert recipe if not exists, get recipeId
-                  const recipeId = await upsertRecipe(professionId, recipeName, itemId);
-                  debug.verbose(`Upserting character recipe: memberId=${memberId}, professionId=${professionId}, recipeId=${recipeId}`);
-                  // Insert or update character_recipes (no skill level)
-                  await upsertCharacterRecipe(memberId, professionId, recipeId);
-                }
+                knownRecipeIds.push(...tier.known_recipes.map(r => r.id));
               }
             }
+          }
+
+          // Get all recipe IDs for this profession from the recipes table
+          const allRecipeRows = await new Promise((resolve, reject) => {
+            db.all(
+              `SELECT id FROM recipes WHERE profession_id = ?`,
+              [professionId],
+              (err, rows) => {
+                if (err) return reject(err);
+                resolve(rows);
+              }
+            );
+          });
+          const allRecipeIds = allRecipeRows.map(r => r.id);
+
+          // Only keep known recipes that exist in the recipes table
+          const validKnownRecipeIds = knownRecipeIds.filter(id => allRecipeIds.includes(id));
+
+          // Remove any character_recipes for this member/profession that are no longer known
+          await new Promise((resolve, reject) => {
+            db.run(
+              `DELETE FROM character_recipes WHERE member_id = ? AND profession_id = ? AND recipe_id NOT IN (${validKnownRecipeIds.length ? validKnownRecipeIds.map(() => '?').join(',') : 'NULL'})`,
+              [memberId, professionId, ...validKnownRecipeIds],
+              err => {
+                if (err) debug.log(`Error cleaning up old character_recipes for ${charName} (${professionName}):`, err);
+                resolve();
+              }
+            );
+          });
+
+          // Insert or update character_recipes for all valid known recipes
+          for (const recipeId of validKnownRecipeIds) {
+            await upsertCharacterRecipe(memberId, professionId, recipeId);
           }
         }
         const tRecipesEnd = Date.now();

@@ -1,7 +1,13 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, Collection, REST, Routes } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const debug = require('./data/debug');
+const db = require('./data/db');
+
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
 
 const client = new Client({
   intents: [
@@ -17,12 +23,27 @@ client.commands = new Collection();
 
 // Load commands
 const commandsPath = path.join(__dirname, 'commands');
-fs.readdirSync(commandsPath).forEach(file => {
-  if (file.endsWith('.js')) {
-    const command = require(path.join(commandsPath, file));
-    client.commands.set(command.data.name, command);
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+const commands = [];
+for (const file of commandFiles) {
+  const command = require(path.join(commandsPath, file));
+  client.commands.set(command.data.name, command);
+  commands.push(command.data.toJSON());
+}
+
+async function registerCommands() {
+  const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
+  try {
+    debug.log('Started refreshing application (/) commands.');
+    await rest.put(
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      { body: commands },
+    );
+    debug.log('Successfully reloaded application (/) commands.');
+  } catch (error) {
+    console.error(error);
   }
-});
+}
 
 client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}!`);
@@ -49,8 +70,12 @@ client.on('interactionCreate', async interaction => {
     await command.execute(interaction);
   } catch (error) {
     console.error(error);
-  await interaction.reply({ content: 'There was an error executing that command!', flags: 64 });
+    await interaction.reply({ content: 'There was an error executing that command!', flags: 64 });
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+
+(async () => {
+  await registerCommands();
+  await client.login(DISCORD_TOKEN);
+})();

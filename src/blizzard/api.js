@@ -1,3 +1,52 @@
+// Fetch profession details (returns object with .tiers)
+async function getSkillTiersForProfession(professionId, accessToken) {
+  const url = `https://${REGION}.api.blizzard.com/data/wow/profession/${professionId}?namespace=static-${REGION}&locale=${LOCALE}`;
+  debug.log('Fetching skill tiers for profession from:', url);
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+    return response.data;
+  } catch (err) {
+    debug.log(`Failed to fetch skill tiers for profession ${professionId}: ${err.response ? err.response.status : err.message}`);
+    return null;
+  }
+}
+// Fetch skill tiers for a profession
+async function getSkillTiersForProfession(professionId, accessToken) {
+  const url = `https://${REGION}.api.blizzard.com/data/wow/profession/${professionId}?namespace=static-${REGION}&locale=${LOCALE}`;
+  debug.log('Fetching profession details from:', url);
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+    return response.data;
+  } catch (err) {
+    debug.log(`Failed to fetch profession details for ${professionId}: ${err.response ? err.response.status : err.message}`);
+    return null;
+  }
+}
+
+// Fetch recipes for a skill tier (categories and recipes)
+async function getRecipesForSkillTier(professionId, skillTierId, accessToken) {
+  const url = `https://${REGION}.api.blizzard.com/data/wow/profession/${professionId}/skill-tier/${skillTierId}?namespace=static-${REGION}&locale=${LOCALE}`;
+  debug.log('Fetching profession skill tier from:', url);
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+    return response.data;
+  } catch (err) {
+    debug.log(`Failed to fetch skill tier ${skillTierId} for profession ${professionId}: ${err.response ? err.response.status : err.message}`);
+    return null;
+  }
+}
 const axios = require('axios');
 const debug = require('../data/debug');
 
@@ -84,6 +133,25 @@ async function getCharacterSpecialization(realmSlug, charName, token) {
   }
 }
 
+
+// Fetch all recipe references for a profession from Blizzard API
+async function getProfessionRecipeIndex(professionId, accessToken) {
+  const url = `https://${REGION}.api.blizzard.com/data/wow/profession/${professionId}/recipe/index?namespace=static-${REGION}&locale=${LOCALE}`;
+  debug.log('Fetching profession recipe index from:', url);
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+    // Returns { recipes: [ { id, name }, ... ] }
+    return response.data;
+  } catch (err) {
+    debug.log(`Failed to fetch recipe index for profession ${professionId}: ${err.response ? err.response.status : err.message}`);
+    return null;
+  }
+}
+
 // Fetch recipe details from Blizzard API by recipe ID
 async function getRecipeDetails(recipeId, accessToken) {
   const url = `https://${REGION}.api.blizzard.com/data/wow/recipe/${recipeId}?namespace=static-${REGION}&locale=${LOCALE}`;
@@ -105,11 +173,33 @@ async function getRecipeDetails(recipeId, accessToken) {
 }
 
 // Export all functions as an object
+// Fetch the professions index from Blizzard API
+async function getProfessionsIndex(accessToken) {
+  const url = `https://${REGION}.api.blizzard.com/data/wow/profession/index?namespace=static-${REGION}&locale=${LOCALE}`;
+  debug.log('Fetching professions index from:', url);
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+    // Returns { professions: [ { id, name }, ... ] }
+    return response.data;
+  } catch (err) {
+    debug.log(`Failed to fetch professions index: ${err.response ? err.response.status : err.message}`);
+    return null;
+  }
+}
+
 module.exports = {
   getBlizzardAccessToken,
   getGuildRoster,
   getCharacterProfessions,
   getCharacterSummary,
   getCharacterSpecialization,
-  getRecipeDetails
+  getRecipeDetails,
+  getProfessionRecipeIndex,
+  getProfessionsIndex,
+  getSkillTiersForProfession,
+  getRecipesForSkillTier
 };
