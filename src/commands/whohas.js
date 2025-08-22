@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const db = require('../data/db');
+const db = require('../data/db_sqlite');
 
 const OUTPUT_STYLE = process.env.WHOHAS_OUTPUT_STYLE || 'table'; // 'table' or 'embed'
 const DISCORD_LIMIT = process.env.DISCORD_LIMIT || 100;
@@ -15,7 +15,6 @@ function paginateTable(header, lines, pageSize) {
   }
   return pages;
 }
-
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('whohas')
@@ -27,177 +26,209 @@ module.exports = {
     ),
   async execute(interaction) {
     const recipeInput = interaction.options.getString('recipe');
-    let query, params, searchType;
+    let searchType;
+    const isItemId = /^\d+$/.test(recipeInput.trim());
+    const searchFn = isItemId ? db.searchCraftersByItemId : db.searchCraftersByRecipeName;
+    searchType = isItemId ? 'Item ID' : 'name';
+    const searchArg = isItemId ? parseInt(recipeInput.trim(), 10) : recipeInput;
 
-    if (/^\d+$/.test(recipeInput.trim())) {
-      // Numeric input: search by item_id
-      query = `
-        SELECT gm.name AS member, p.name AS profession, cr.max_skill_level, r.recipe_name, gm.discord_id, r.id as recipe_id, gm.id as member_id
-        FROM character_recipes cr
-        JOIN recipes r ON cr.recipe_id = r.id
-        JOIN professions p ON cr.profession_id = p.id
-        JOIN guild_members gm ON cr.member_id = gm.id
-        WHERE r.item_id = ?
-      `;
-      params = [parseInt(recipeInput.trim(), 10)];
-      searchType = 'Item ID';
-    } else {
-      // Text input: search by recipe name
-      query = `
-        SELECT gm.name AS member, p.name AS profession, cr.max_skill_level, r.recipe_name, gm.discord_id, r.id as recipe_id, gm.id as member_id
-        FROM character_recipes cr
-        JOIN recipes r ON cr.recipe_id = r.id
-        JOIN professions p ON cr.profession_id = p.id
-        JOIN guild_members gm ON cr.member_id = gm.id
-        WHERE r.recipe_name LIKE ?
-      `;
-      params = [`%${recipeInput}%`];
-      searchType = 'name';
-    }
+    try {
+      await new Promise((resolve, reject) => {
+        searchFn(searchArg, async (err, rows) => {
+          if (err) {
+            console.error(err);
+            if (!interaction.replied && !interaction.deferred) {
+              await interaction.reply('A database error occurred while searching for crafters.');
+            } else {
+              await interaction.followUp('A database error occurred while searching for crafters.');
+            }
+            return resolve();
+          }
+          if (!rows || !rows.length) {
+            if (!interaction.replied && !interaction.deferred) {
+              await interaction.reply(
+                searchType === 'Item ID'
+                  ? `No guild member can craft a recipe with Item ID "${recipeInput}".`
+                  : `No guild member can craft a recipe matching "${recipeInput}".`
+              );
+            } else {
+              await interaction.followUp(
+                searchType === 'Item ID'
+                  ? `No guild member can craft a recipe with Item ID "${recipeInput}".`
+                  : `No guild member can craft a recipe matching "${recipeInput}".`
+              );
+            }
+            return resolve();
+          }
 
-    db.all(
-      query,
-      params,
-      async (err, rows) => {
-        if (err) {
-          console.error(err);
-          return interaction.reply('Error searching for crafters.');
-        }
-        if (!rows.length) {
-          return interaction.reply(
-            searchType === 'Item ID'
-              ? `No guild member can craft a recipe with Item ID "${recipeInput}".`
-              : `No guild member can craft a recipe matching "${recipeInput}".`
-          );
-        }
-
-        // Fetch Discord usernames for claimed characters
-        const discordNames = {};
-        for (const row of rows) {
-          if (row.discord_id && !discordNames[row.discord_id]) {
-            try {
-              const user = await interaction.client.users.fetch(row.discord_id);
-              discordNames[row.discord_id] = user ? user.username : '-';
-            } catch {
-              discordNames[row.discord_id] = '-';
+          // Fetch Discord usernames for claimed characters
+          const discordNames = {};
+          for (const row of rows) {
+            if (row.discord_id && !discordNames[row.discord_id]) {
+              try {
+                // Try to get the member from the guild for nickname
+                let displayName = '-';
+                let username = '-';
+                const guild = interaction.guild;
+                if (guild) {
+                  const member = await guild.members.fetch(row.discord_id).catch(() => null);
+                  if (member) {
+                    displayName = member.displayName;
+                    username = member.user.username;
+                  } else {
+                    // fallback to user object
+                    const user = await interaction.client.users.fetch(row.discord_id);
+                    if (user) {
+                      displayName = user.username;
+                      username = user.username;
+                    }
+                  }
+                } else {
+                  const user = await interaction.client.users.fetch(row.discord_id);
+                  if (user) {
+                    displayName = user.username;
+                    username = user.username;
+                  }
+                }
+                discordNames[row.discord_id] = displayName !== username ? `${displayName} (${username})` : displayName;
+              } catch {
+                discordNames[row.discord_id] = '-';
+              }
             }
           }
-        }
 
-        // Prepare output, sorted by character name
-        const results = rows.map(row => ({
-          ...row,
-          discordName: row.discord_id ? discordNames[row.discord_id] : '-',
-        })).sort((a, b) => a.member.localeCompare(b.member));
+          // Prepare output, sorted by character name
+          const results = rows.map(row => ({
+            ...row,
+            discordName: row.discord_id ? discordNames[row.discord_id] : '-',
+          })).sort((a, b) => a.member.localeCompare(b.member));
 
-        let headerLine = `Character           | Discord Name        | Profession     | Recipe                | Item ID`;
-        let separatorLine = `--------------------|---------------------|----------------|-----------------------|---------`;
+          // Only embed output is supported in this version
+          const PAGE_SIZE = 5;
+          const PROF_COLORS = {
+            'Alchemy': '🧪',
+            'Blacksmithing': '⚒️',
+            'Enchanting': '✨',
+            'Engineering': '🔧',
+            'Jewelcrafting': '💎',
+            'Leatherworking': '👢',
+            'Tailoring': '🧵',
+            'Inscription': '📜',
+            'Cooking': '🍳',
+            'Herbalism': '🌿',
+            'Mining': '⛏️',
+            'Skinning': '🔪',
+            'Fishing': '🎣',
+            'Archaeology': '🏺',
+            'First Aid': '🩹'
+          };
 
-        const lines = results.map(row => {
-          let itemIdStr = row.item_id ? `${row.item_id}` : '-';
-          let wowhead = row.item_id ? `https://www.wowhead.com/item=${row.item_id}` : '';
-          // Markdown hyperlink for Discord (not supported in code blocks, but show URL for copy)
-          let itemIdDisplay = row.item_id ? `${row.item_id} (${wowhead})` : '-';
-          return `${row.member.padEnd(20)}| ${row.discordName.padEnd(20)}| ${row.profession.padEnd(15)}| ${row.recipe_name.padEnd(22)}| ${itemIdDisplay}`;
-        });
-
-        const claimedMentions = results
-          .filter(row => row.discord_id)
-          .map(row => `<@${row.discord_id}>`);
-
-        const header = `**Crafters for ${searchType === 'Item ID' ? `Item ID ${recipeInput}` : `"${recipeInput}"`}:**` +
-          (claimedMentions.length
-            ? `\nClaimed by: ${[...new Set(claimedMentions)].join(', ')}`
-            : '');
-
-        if (OUTPUT_STYLE === 'embed') {
-          // Build fields for the embed (no quality)
-          const fields = results.map(row => {
-            let wowhead = row.item_id ? `https://www.wowhead.com/item=${row.item_id}` : null;
-            let itemIdField = row.item_id ? `[${row.item_id}](${wowhead})` : '-';
-            return {
-              name: `${row.member} (${row.profession})`,
-              value:
-                `**Discord:** ${row.discord_id ? `<@${row.discord_id}>` : '-'}\n` +
-                `**Recipe:** ${row.recipe_name}` +
-                (row.item_id ? `\n**Item ID:** [${row.item_id}](${wowhead})` : ''),
-              inline: true
-            };
-          });
-
-          // If all results are for the same item, show a Wowhead link in the title
-          let wowheadLink = results[0]?.item_id ? `https://www.wowhead.com/item=${results[0].item_id}` : null;
-          const embed = new EmbedBuilder()
-            .setTitle(`Crafters for ${searchType === 'Item ID' ? `Item ID ${recipeInput}` : `"${recipeInput}"`}`)
-            .setColor(0x00AE86)
-            .addFields(fields);
-          if (wowheadLink) embed.setURL(wowheadLink);
-
-          await interaction.reply({ embeds: [embed] });
-        } else {
-          // Monospaced table output (default) with interactive pagination
-          const codeHeader = `${headerLine}\n${separatorLine}`;
-          const pagedLines = [];
-          for (let i = 0; i < lines.length; i += WHOHAS_PAGE_SIZE) {
-            pagedLines.push([codeHeader, ...lines.slice(i, i + WHOHAS_PAGE_SIZE)]);
-          }
-
-          // Helper to build the page content
-          function buildPage(pageIdx) {
-            return {
-              content: `${header}\n\nPage ${pageIdx + 1} of ${pagedLines.length}:\n\n\`\`\`${pagedLines[pageIdx].join('\n')}\`\`\``,
-              components: [
-                {
-                  type: 1, // ActionRow
-                  components: [
-                    {
-                      type: 2, // Button
-                      style: 1, // Primary
-                      label: 'Previous',
-                      custom_id: 'whohas_prev',
-                      disabled: pageIdx === 0
-                    },
-                    {
-                      type: 2, // Button
-                      style: 1, // Primary
-                      label: 'Next',
-                      custom_id: 'whohas_next',
-                      disabled: pageIdx === pagedLines.length - 1
-                    }
-                  ]
-                }
-              ]
-            };
+          function buildEmbedPage(pageIdx) {
+            const pageResults = results.slice(pageIdx * PAGE_SIZE, (pageIdx + 1) * PAGE_SIZE);
+            const embed = new EmbedBuilder()
+              .setTitle(`Crafters for ${searchType === 'Item ID' ? `Item ID ${recipeInput}` : `"${recipeInput}"`}`)
+              .setColor(0x00AE86)
+              .setDescription(
+                pageResults.map(row => {
+                  let wowhead = row.item_id ? `https://www.wowhead.com/item=${row.item_id}` : null;
+                  let itemIdField = row.item_id ? `[${row.item_id}](${wowhead})` : '-';
+                  let profIcon = PROF_COLORS[row.profession] || '';
+                  let crafterLine = `**${profIcon} ${row.member}**  ${row.discord_id ? `<@${row.discord_id}>` : ''}\n` +
+                    `*Profession:* __${row.profession}__\n` +
+                    `*Recipe:* **${row.recipe_name}**\n` +
+                    (row.item_id ? `*Item ID:* ${itemIdField}\n` : '') +
+                    `\u200B`;
+                  return crafterLine;
+                }).join('\n')
+              );
+            let wowheadLink = pageResults[0]?.item_id ? `https://www.wowhead.com/item=${pageResults[0].item_id}` : null;
+            if (wowheadLink) embed.setURL(wowheadLink);
+            return embed;
           }
 
           let pageIdx = 0;
-          await interaction.reply(buildPage(pageIdx));
+          const totalPages = Math.ceil(results.length / PAGE_SIZE);
+          await interaction.reply({
+            embeds: [buildEmbedPage(pageIdx)],
+            components: totalPages > 1 ? [
+              {
+                type: 1,
+                components: [
+                  {
+                    type: 2,
+                    style: 1,
+                    label: 'Previous',
+                    custom_id: 'whohas_embed_prev',
+                    disabled: pageIdx === 0
+                  },
+                  {
+                    type: 2,
+                    style: 1,
+                    label: 'Next',
+                    custom_id: 'whohas_embed_next',
+                    disabled: pageIdx === totalPages - 1
+                  }
+                ]
+              }
+            ] : []
+          });
           const replyMsg = await interaction.fetchReply();
 
-          if (pagedLines.length > 1) {
+          if (totalPages > 1) {
             const filter = i =>
               i.user.id === interaction.user.id &&
-              (i.customId === 'whohas_next' || i.customId === 'whohas_prev');
+              (i.customId === 'whohas_embed_next' || i.customId === 'whohas_embed_prev');
             const collector = replyMsg.createMessageComponentCollector({ filter, time: 60000 });
 
             collector.on('collect', async i => {
-              if (i.customId === 'whohas_next' && pageIdx < pagedLines.length - 1) {
+              if (i.customId === 'whohas_embed_next' && pageIdx < totalPages - 1) {
                 pageIdx++;
-              } else if (i.customId === 'whohas_prev' && pageIdx > 0) {
+              } else if (i.customId === 'whohas_embed_prev' && pageIdx > 0) {
                 pageIdx--;
               }
-              await i.update(buildPage(pageIdx));
+              await i.update({
+                embeds: [buildEmbedPage(pageIdx)],
+                components: [
+                  {
+                    type: 1,
+                    components: [
+                      {
+                        type: 2,
+                        style: 1,
+                        label: 'Previous',
+                        custom_id: 'whohas_embed_prev',
+                        disabled: pageIdx === 0
+                      },
+                      {
+                        type: 2,
+                        style: 1,
+                        label: 'Next',
+                        custom_id: 'whohas_embed_next',
+                        disabled: pageIdx === totalPages - 1
+                      }
+                    ]
+                  }
+                ]
+              });
             });
 
             collector.on('end', async () => {
               // Disable buttons after timeout
               try {
-                await replyMsg.edit({ ...buildPage(pageIdx), components: [] });
+                await replyMsg.edit({ embeds: [buildEmbedPage(pageIdx)], components: [] });
               } catch {}
             });
           }
-        }
+          resolve();
+        });
+      });
+    } catch (err) {
+      console.error('Unhandled error in /whohas:', err);
+      if (!interaction.replied && !interaction.deferred) {
+        return interaction.reply('An unexpected error occurred while searching for crafters.');
+      } else {
+        return interaction.followUp('An unexpected error occurred while searching for crafters.');
       }
-    )
+    }
   }
 };

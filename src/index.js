@@ -74,7 +74,6 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-
 (async () => {
   await registerCommands();
   await client.login(DISCORD_TOKEN);

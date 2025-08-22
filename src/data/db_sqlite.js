@@ -1,3 +1,30 @@
+// Helper: Find crafters by partial recipe name
+function searchCraftersByRecipeName(recipeName, callback) {
+  db.all(
+    `SELECT gm.name AS member, p.name AS profession, cr.max_skill_level, r.recipe_name, gm.discord_id, r.id as recipe_id, gm.id as member_id, r.item_id
+     FROM character_recipes cr
+     JOIN recipes r ON cr.recipe_id = r.id
+     JOIN professions p ON cr.profession_id = p.id
+     JOIN guild_members gm ON cr.member_id = gm.id
+     WHERE r.recipe_name LIKE ?`,
+    [`%${recipeName}%`],
+    callback
+  );
+}
+
+// Helper: Find crafters by item ID
+function searchCraftersByItemId(itemId, callback) {
+  db.all(
+    `SELECT gm.name AS member, p.name AS profession, cr.max_skill_level, r.recipe_name, gm.discord_id, r.id as recipe_id, gm.id as member_id, r.item_id
+     FROM character_recipes cr
+     JOIN recipes r ON cr.recipe_id = r.id
+     JOIN professions p ON cr.profession_id = p.id
+     JOIN guild_members gm ON cr.member_id = gm.id
+     WHERE r.item_id = ?`,
+    [itemId],
+    callback
+  );
+}
 const sqlite3 = require('sqlite3').verbose();
 const debug = require('./debug');
 const path = require('path');
@@ -219,6 +246,8 @@ module.exports = {
   run: (...args) => db.run(...args),
   get: (...args) => db.get(...args),
   all: (...args) => db.all(...args),
-  serialize: (fn) => db.serialize(fn)
+  serialize: (fn) => db.serialize(fn),
+  searchCraftersByRecipeName,
+  searchCraftersByItemId
 };
 
