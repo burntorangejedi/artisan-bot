@@ -25,7 +25,7 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   async execute(interaction) {
     if (await isBusy()) {
-      return interaction.reply({ content: 'A sync is already in progress. Please wait until it completes.', ephemeral: true });
+    return interaction.reply({ content: 'A sync is already in progress. Please wait until it completes.', flags: 64 });
     }
     setBusy(true);
     try {

@@ -11,7 +11,7 @@
 **If you’re starting fresh (e.g., initial install, or after deleting the database), follow these steps:**
 
 1. **Delete the old database file**  
-   Remove your SQLite database file (e.g., `guilddata.sqlite`) from the project directory. This step is (obviously) optional as it does a full purge of all the data used by the bot. Recommended if things get completely out of sync, and then register an issue with me here on GitHub. 
+   Remove your SQLite database file (e.g., `guilddata.sqlite`) from the project directory. This step is optional and only needed for a full reset.
 
 2. **Restart the bot**  
    This will recreate the database tables automatically.
@@ -26,43 +26,59 @@
 4. **Sync the guild roster and professions**  
    Run:  
    ```
-   /syncguild
+   /sync-guild
    ```
    This fetches the latest roster and profession/spec data from Blizzard and populates the database.
 
 5. **Have members claim their characters**  
    Each guild member should run:  
    ```
-   /claim character <character name>
+   /characters claim <character name>
    ```
    This links their Discord account to their character(s) and automatically assigns the correct class/spec, main role, and profession roles.
 
-   Optionally, the bot support providing multiple character names with the command, but intellisense / autocomplete is not available for any but the first character. e.g.
-   ```
-   /claim character Toon1 Toon2 Toon3
-   ```
-      Might not even want to mention it to your guildies, but I included it here because I was too lazy to type the command over and over again for my own characters.
-
-6. **(Optional) List claimed characters**  
-   Members can see their claimed characters with:  
-   ```
-   /claim list
-   ```
-
-7. **(Optional) Remove all roles created by the bot**  
-   If you need to clean up, run:  
-   ```
-   /guild-roles remove
-   ```
+   Members can also:
+   - List their claimed characters: `/characters list`
+   - Set a main character: `/characters setmain <character name>`
+   - Unclaim a character: `/characters unclaim <character name>`
 
 ---
 
-## 🧩 Features
+
+## 🛠️ Features
 
 - **Automatic role assignment** for class/spec, main role (Tank/Healer/DPS), and professions when a character is claimed
-- **Profession and recipe search** with `/whohas`
-- **Easy guild roster and profession syncing** with `/syncguild`
-- **Admin commands** for bulk role management
+- **Profession and recipe search** with `/whohas` (supports pagination with Next/Previous buttons)
+- **Easy guild roster and profession syncing** with `/sync-guild`
+- **Admin commands** for bulk role management (`/guild-roles add`/`remove`)
+- **Character claiming and management** with `/characters` commands
+- **/help command** for in-Discord command reference
+## ⚙️ Environment Variables
+
+You can configure the bot using a `.env` file in the project root. Key variables:
+
+- `DEBUG_LEVEL` — Set to `info`, `verbose`, or `error` for logging detail
+- `SYNC_BATCH_SIZE` — Number of characters to process in parallel during sync (default: 5)
+- `WHO_HAS_PAGE_SIZE` — Number of results per page for `/whohas` (default: 10)
+- `WHOHAS_OUTPUT_STYLE` — Set to `table` (default) or `embed` for `/whohas` output style
+- `DISCORD_LIMIT` — Max message length for table output (default: 100)
+## 🆘 Commands Overview
+
+**/help** — Show a summary of all commands
+
+**/sync-guild** — Admin: Sync or refresh guild data from Blizzard API
+
+**/whohas <item/recipe>** — Find out who can craft a specific recipe or item (supports pagination)
+
+**/characters claim <character>** — Claim a character as your own
+**/characters setmain <character>** — Set one of your claimed characters as your main
+**/characters list** — List all characters you have claimed
+**/characters unclaim <character>** — Unclaim a character you previously claimed
+
+**/guild-roles add** — Admin: Create all class/spec, main, and profession roles
+**/guild-roles remove** — Admin: Remove all class/spec, main, and profession roles
+
+---
 
 ---
 

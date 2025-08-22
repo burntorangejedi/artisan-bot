@@ -90,12 +90,16 @@ module.exports = {
           discordName: row.discord_id ? discordNames[row.discord_id] : '-',
         })).sort((a, b) => a.member.localeCompare(b.member));
 
-        let headerLine = `Character           | Discord Name        | Profession     | Recipe`;
-        let separatorLine = `--------------------|---------------------|----------------|---------------------`;
+        let headerLine = `Character           | Discord Name        | Profession     | Recipe                | Item ID`;
+        let separatorLine = `--------------------|---------------------|----------------|-----------------------|---------`;
 
-        const lines = results.map(row =>
-          `${row.member.padEnd(20)}| ${row.discordName.padEnd(20)}| ${row.profession.padEnd(15)}| ${row.recipe_name}`
-        );
+        const lines = results.map(row => {
+          let itemIdStr = row.item_id ? `${row.item_id}` : '-';
+          let wowhead = row.item_id ? `https://www.wowhead.com/item=${row.item_id}` : '';
+          // Markdown hyperlink for Discord (not supported in code blocks, but show URL for copy)
+          let itemIdDisplay = row.item_id ? `${row.item_id} (${wowhead})` : '-';
+          return `${row.member.padEnd(20)}| ${row.discordName.padEnd(20)}| ${row.profession.padEnd(15)}| ${row.recipe_name.padEnd(22)}| ${itemIdDisplay}`;
+        });
 
         const claimedMentions = results
           .filter(row => row.discord_id)
@@ -108,19 +112,26 @@ module.exports = {
 
         if (OUTPUT_STYLE === 'embed') {
           // Build fields for the embed (no quality)
-          const fields = results.map(row => ({
-            name: `${row.member} (${row.profession})`,
-            value:
-              `**Discord:** ${row.discord_id ? `<@${row.discord_id}>` : '-'}\n` +
-              `**Skill:** ${row.skill_level ?? 'unknown'}\n` +
-              `**Recipe:** ${row.recipe_name}`,
-            inline: true
-          }));
+          const fields = results.map(row => {
+            let wowhead = row.item_id ? `https://www.wowhead.com/item=${row.item_id}` : null;
+            let itemIdField = row.item_id ? `[${row.item_id}](${wowhead})` : '-';
+            return {
+              name: `${row.member} (${row.profession})`,
+              value:
+                `**Discord:** ${row.discord_id ? `<@${row.discord_id}>` : '-'}\n` +
+                `**Recipe:** ${row.recipe_name}` +
+                (row.item_id ? `\n**Item ID:** [${row.item_id}](${wowhead})` : ''),
+              inline: true
+            };
+          });
 
+          // If all results are for the same item, show a Wowhead link in the title
+          let wowheadLink = results[0]?.item_id ? `https://www.wowhead.com/item=${results[0].item_id}` : null;
           const embed = new EmbedBuilder()
             .setTitle(`Crafters for ${searchType === 'Item ID' ? `Item ID ${recipeInput}` : `"${recipeInput}"`}`)
-            .addFields(fields)
-            .setColor(0x00AE86);
+            .setColor(0x00AE86)
+            .addFields(fields);
+          if (wowheadLink) embed.setURL(wowheadLink);
 
           await interaction.reply({ embeds: [embed] });
         } else {
