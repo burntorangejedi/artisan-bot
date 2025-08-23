@@ -5,9 +5,10 @@ const path = require('path');
 const debug = require('./data/debug');
 const db = require('./data/db');
 
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID;
+const settings = require('./settings');
+const DISCORD_TOKEN = settings.DISCORD_TOKEN;
+const CLIENT_ID = settings.CLIENT_ID;
+const GUILD_ID = settings.GUILD_ID;
 
 const client = new Client({
   intents: [

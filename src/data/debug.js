@@ -1,7 +1,8 @@
 
 
 // DEBUG_LEVEL: 'none', 'debug', or 'verbose'
-const DEBUG_LEVEL = (process.env.DEBUG_LEVEL || 'none').toLowerCase();
+const settings = require('../settings');
+const DEBUG_LEVEL = settings.DEBUG_LEVEL;
 
 function log(...args) {
   if (DEBUG_LEVEL === 'debug' || DEBUG_LEVEL === 'verbose') {

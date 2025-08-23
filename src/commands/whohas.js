@@ -1,9 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const db = require('../data/db_sqlite');
+const db = require('../data/platform/sqlite/db_sqlite');
 
-const OUTPUT_STYLE = process.env.WHOHAS_OUTPUT_STYLE || 'table'; // 'table' or 'embed'
-const DISCORD_LIMIT = process.env.DISCORD_LIMIT || 100;
-const WHOHAS_PAGE_SIZE = parseInt(process.env.WHOHAS_PAGE_SIZE, 10) || 10;
+
+const settings = require('../settings');
 
 
 function paginateTable(header, lines, pageSize) {
@@ -88,47 +87,8 @@ module.exports = {
         return discordNames;
       }
 
-      // Helper: build embed page
-      function buildEmbedPage(results, pageIdx) {
-        const PAGE_SIZE = 5;
-        const PROF_COLORS = {
-          'Alchemy': '🧪',
-          'Blacksmithing': '⚒️',
-          'Enchanting': '✨',
-          'Engineering': '🔧',
-          'Jewelcrafting': '💎',
-          'Leatherworking': '👢',
-          'Tailoring': '🧵',
-          'Inscription': '📜',
-          'Cooking': '🍳',
-          'Herbalism': '🌿',
-          'Mining': '⛏️',
-          'Skinning': '🔪',
-          'Fishing': '🎣',
-          'Archaeology': '🏺',
-          'First Aid': '🩹'
-        };
-        const pageResults = results.slice(pageIdx * PAGE_SIZE, (pageIdx + 1) * PAGE_SIZE);
-        const embed = new EmbedBuilder()
-          .setTitle(`Crafters for ${searchType === 'Item ID' ? `Item ID ${recipeInput}` : `"${recipeInput}"`}`)
-          .setColor(0x00AE86)
-          .setDescription(
-            pageResults.map(row => {
-              let wowhead = row.item_id ? `https://www.wowhead.com/item=${row.item_id}` : null;
-              let itemIdField = row.item_id ? `[${row.item_id}](${wowhead})` : '-';
-              let profIcon = PROF_COLORS[row.profession] || '';
-              let crafterLine = `**${profIcon} ${row.member}**  ${row.discord_id ? `<@${row.discord_id}>` : ''}\n` +
-                `*Profession:* __${row.profession}__\n` +
-                `*Recipe:* **${row.recipe_name}**\n` +
-                (row.item_id ? `*Item ID:* ${itemIdField}\n` : '') +
-                `\u200B`;
-              return crafterLine;
-            }).join('\n')
-          );
-        let wowheadLink = pageResults[0]?.item_id ? `https://www.wowhead.com/item=${pageResults[0].item_id}` : null;
-        if (wowheadLink) embed.setURL(wowheadLink);
-        return embed;
-      }
+  // Use embed helper
+  const { buildWhohasEmbedPage } = require('../embeds/whohasEmbed');
 
       const discordNames = await resolveDiscordNames(rows);
       const results = rows.map(row => ({
@@ -139,8 +99,9 @@ module.exports = {
       let pageIdx = 0;
       const PAGE_SIZE = 5;
       const totalPages = Math.ceil(results.length / PAGE_SIZE);
+
       await interaction.reply({
-        embeds: [buildEmbedPage(results, pageIdx)],
+        embeds: [buildWhohasEmbedPage({ results, pageIdx, searchType, recipeInput })],
         components: totalPages > 1 ? [
           {
             type: 1,
@@ -178,7 +139,7 @@ module.exports = {
             pageIdx--;
           }
           await i.update({
-            embeds: [buildEmbedPage(results, pageIdx)],
+            embeds: [buildWhohasEmbedPage({ results, pageIdx, searchType, recipeInput })],
             components: [
               {
                 type: 1,
@@ -206,7 +167,7 @@ module.exports = {
         collector.on('end', async () => {
           // Disable buttons after timeout
           try {
-            await replyMsg.edit({ embeds: [buildEmbedPage(results, pageIdx)], components: [] });
+            await replyMsg.edit({ embeds: [buildWhohasEmbedPage({ results, pageIdx, searchType, recipeInput })], components: [] });
           } catch {}
         });
       }

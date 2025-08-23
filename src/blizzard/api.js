@@ -50,10 +50,11 @@ async function getRecipesForSkillTier(professionId, skillTierId, accessToken) {
 const axios = require('axios');
 const debug = require('../data/debug');
 
-const REGION = process.env.REGION || 'us';
-const LOCALE = process.env.LOCALE || 'en_US';
-const BLIZZARD_CLIENT_ID = process.env.BLIZZARD_CLIENT_ID;
-const BLIZZARD_CLIENT_SECRET = process.env.BLIZZARD_CLIENT_SECRET;
+const settings = require('../settings');
+const REGION = settings.REGION;
+const LOCALE = settings.LOCALE;
+const BLIZZARD_CLIENT_ID = settings.BLIZZARD_CLIENT_ID;
+const BLIZZARD_CLIENT_SECRET = settings.BLIZZARD_CLIENT_SECRET;
 
 async function getBlizzardAccessToken() {
   debug.log('Fetching accessToken from Blizzard API...');
@@ -72,8 +73,8 @@ async function getBlizzardAccessToken() {
 }
 
 async function getGuildRoster(accessToken) {
-  const realm = process.env.REALM.toLowerCase().replace(/'/g, '').replace(/ /g, '-');
-  const guild = process.env.GUILD_NAME.toLowerCase().replace(/'/g, '').replace(/ /g, '-');
+  const realm = settings.REALM.toLowerCase().replace(/'/g, '').replace(/ /g, '-');
+  const guild = settings.GUILD_NAME.toLowerCase().replace(/'/g, '').replace(/ /g, '-');
   const url = `https://${REGION}.api.blizzard.com/data/wow/guild/${realm}/${guild}/roster?namespace=profile-${REGION}&locale=${LOCALE}`;
   debug.log('Guild roster URL:', url);
   const response = await axios.get(url, {

@@ -1,7 +1,13 @@
+
 const backend = process.env.DB_BACKEND || 'sqlite';
 
 if (backend === 'cosmosdb') {
-  module.exports = require('./db_cosmosdb');
+  // CosmosDB backend
+  module.exports = require('./platform/cosmosdb/db_cosmosdb');
 } else {
-  module.exports = require('./db_sqlite');
+  // SQLite backend
+  const db = require('./platform/sqlite/db_sqlite');
+  module.exports = {
+    ...db
+  };
 }
