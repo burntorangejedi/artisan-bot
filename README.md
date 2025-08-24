@@ -64,16 +64,17 @@ You can configure the bot using a `.env` file in the project root. Key variables
 - `DISCORD_LIMIT` — Max message length for table output (default: 100)
 ## 🆘 Commands Overview
 
-**/help** — Show a summary of all commands
+**/help** — Show a summary of all commands and features
 
-**/sync-guild** — Admin: Sync or refresh guild data from Blizzard API
+**/sync-guild** — Admin: Sync or refresh guild data from Blizzard API (updates roster, professions, and recipes)
 
-**/whohas <item/recipe>** — Find out who can craft a specific recipe or item (supports pagination)
+**/whohas <item/recipe>** — Find out who can craft a specific recipe or item (supports pagination with Next/Previous buttons)
 
-**/characters claim <character>** — Claim a character as your own
-**/characters setmain <character>** — Set one of your claimed characters as your main
-**/characters list** — List all characters you have claimed
-**/characters unclaim <character>** — Unclaim a character you previously claimed
+**/characters** — Manage your claimed characters:
+   • `/characters claim <character>` — Claim a character as your own
+   • `/characters setmain <character>` — Set one of your claimed characters as your main
+   • `/characters list` — List all characters you have claimed (shows class, spec, main role, and main status)
+   • `/characters unclaim <character>` — Unclaim a character you previously claimed
 
 **/guild-roles add** — Admin: Create all class/spec, main, and profession roles
 **/guild-roles remove** — Admin: Remove all class/spec, main, and profession roles
