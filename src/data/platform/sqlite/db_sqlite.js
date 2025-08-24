@@ -1,3 +1,264 @@
+// =====================================
+// artisan-bot: SQLite DB Implementation
+// =====================================
+
+// --- Module Imports ---
+const debug = require('../../debug');
+const path = require('path');
+const { getBlizzardAccessToken, getProfessionsIndex, getSkillTiersForProfession, getRecipesForSkillTier } = require('../../../blizzard/api');
+
+
+// =============================
+// SQLite DB Implementation
+// =============================
+
+// --- Database Initialization ---
+const sqlite3 = require('sqlite3').verbose();
+const dbPath = path.resolve(__dirname, '../../../../guilddata.sqlite');
+const db = new sqlite3.Database(dbPath);
+console.log('[DB] Using database file:', dbPath);
+
+// Enable foreign key support
+db.run('PRAGMA foreign_keys = ON;');
+
+// Build the database if needed
+db.serialize(() => {
+	debug.log('Initializing database tables...');
+
+	// Guild members (characters)
+	debug.log('guild_members...');
+	db.run(`
+		CREATE TABLE IF NOT EXISTS guild_members (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			realm TEXT NOT NULL,
+			discord_id TEXT,
+			class TEXT,
+			spec TEXT,
+			role TEXT,
+			is_main INTEGER DEFAULT 0,
+			UNIQUE(name, realm)
+		)
+	`);
+
+	// Master professions list
+	debug.log('professions...');
+	db.run(`
+		CREATE TABLE IF NOT EXISTS professions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL UNIQUE,
+			profession_id INTEGER UNIQUE
+		);
+	`);
+
+	// Master recipes list
+	debug.log('recipes...');
+	db.run(`
+		CREATE TABLE IF NOT EXISTS recipes (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			profession_id INTEGER NOT NULL,
+			profession_name TEXT,
+			skill_tier_id INTEGER,
+			skill_tier_name TEXT,
+			recipe_id INTEGER,
+			recipe_name TEXT NOT NULL,
+			item_id INTEGER,
+			FOREIGN KEY(profession_id) REFERENCES professions(id)
+		)
+	`);
+
+	// Character <-> Recipe mapping
+	debug.log('character_recipes...');
+	db.run(`
+		CREATE TABLE IF NOT EXISTS character_recipes (
+			member_id INTEGER NOT NULL,
+			profession_id INTEGER NOT NULL,
+			recipe_id INTEGER NOT NULL,
+			max_skill_level INTEGER,
+			PRIMARY KEY (member_id, profession_id, recipe_id),
+			FOREIGN KEY (member_id) REFERENCES guild_members(id),
+			FOREIGN KEY (profession_id) REFERENCES professions(id),
+			FOREIGN KEY (recipe_id) REFERENCES recipes(id)
+		)
+	`);
+
+	// Add indexes for performance
+	db.run('CREATE INDEX IF NOT EXISTS idx_professions_name ON professions(name)');
+	db.run('CREATE INDEX IF NOT EXISTS idx_recipes_profession_id ON recipes(profession_id)');
+	db.run('CREATE INDEX IF NOT EXISTS idx_recipes_item_id ON recipes(item_id)');
+	db.run('CREATE INDEX IF NOT EXISTS idx_character_recipes_member_id ON character_recipes(member_id)');
+	db.run('CREATE INDEX IF NOT EXISTS idx_character_recipes_profession_id ON character_recipes(profession_id)');
+	db.run('CREATE INDEX IF NOT EXISTS idx_character_recipes_recipe_id ON character_recipes(recipe_id)');
+
+	debug.log("... database table creation complete!");
+
+	// Initialize master data after tables and indexes are created
+	initializeDb().catch(err => {
+		debug.log('[DB] Error initializing master data:', err);
+	});
+
+});
+
+// =============================
+// Character Helpers
+// =============================
+
+/**
+ * Get class and spec for a character by name (case-insensitive).
+ * @param {string} name
+ * @returns {Promise<{class: string, spec: string}>}
+ */
+async function getClassAndSpecForCharacter(name) {
+	return new Promise((resolve, reject) => {
+		db.get(
+			`SELECT class, spec FROM guild_members WHERE name = ? COLLATE NOCASE`,
+			[name],
+			(err, row) => err ? reject(err) : resolve(row)
+		);
+	});
+}
+
+/**
+ * Claim a character as your very own. If you have no main selected,
+ * it will set this character as your main..
+ * @param {string} name
+ * @returns {Promise<{class: string, spec: string}>}
+ */
+async function claimCharacter(discordId, charId) {
+       return new Promise((resolve, reject) => {
+	       db.run(
+		       `UPDATE guild_members SET discord_id = ? WHERE id = ?`,
+		       [discordId, charId],
+		       err => err ? reject(err) : resolve()
+	       );
+       });
+}
+
+/**
+ * Unset all main characters for a user.
+ * @param {string} discordId
+ * @returns {Promise<void>}
+ */
+async function unsetMainForUser(discordId) {
+       return new Promise((resolve, reject) => {
+	       db.run(
+		       `UPDATE guild_members SET is_main = 0 WHERE discord_id = ?`,
+		       [discordId],
+		       err => err ? reject(err) : resolve()
+	       );
+       });
+}
+
+/**
+ * Set a character as main by character ID.
+ * @param {number} charId
+ * @returns {Promise<void>}
+ */
+async function setMainCharacter(charId) {
+       return new Promise((resolve, reject) => {
+	       db.run(
+		       `UPDATE guild_members SET is_main = 1 WHERE id = ?`,
+		       [charId],
+		       err => err ? reject(err) : resolve()
+	       );
+       });
+}
+
+/**
+ * Get a character row by name for unclaim (case-insensitive).
+ * @param {string} name
+ * @returns {Promise<{id: number, discord_id: string, is_main: number}>}
+ */
+async function getCharacterRowForUnclaim(name) {
+	return new Promise((resolve, reject) => {
+		db.get(
+			 `SELECT id, discord_id, is_main FROM guild_members WHERE name = ? COLLATE NOCASE`,
+			 [name],
+			 (err, row) => err ? reject(err) : resolve(row)
+		);
+	});
+}
+
+/**
+ * Unclaim a character by character ID.
+ * @param {number} charId
+ * @returns {Promise<void>}
+ */
+async function unclaimCharacter(charId) {
+       return new Promise((resolve, reject) => {
+	       db.run(
+		       `UPDATE guild_members SET discord_id = NULL, is_main = 0 WHERE id = ?`,
+		       [charId],
+		       err => err ? reject(err) : resolve()
+	       );
+       });
+}
+
+/**
+ * List all claimed characters for a user.
+ * @param {string} discordId
+ * @returns {Promise<Array>}
+ */
+async function listClaimedCharacters(discordId) {
+       return new Promise((resolve, reject) => {
+	       db.all(
+		       `SELECT name, class, spec, role, is_main FROM guild_members WHERE discord_id = ? ORDER BY name`,
+		       [discordId],
+		       (err, rows) => err ? reject(err) : resolve(rows)
+	       );
+       });
+}
+
+/**
+ * Get the count of claimed characters for a user, excluding a specific character name.
+ * @param {string} discordId
+ * @param {string} excludeName
+ * @returns {Promise<number>}
+ */
+async function getClaimedCharacterCount(discordId, excludeName) {
+	return new Promise((resolve, reject) => {
+		db.get(
+			`SELECT COUNT(*) as count FROM guild_members WHERE discord_id = ? AND name != ? COLLATE NOCASE`,
+			[discordId, excludeName],
+			(err, row) => err ? reject(err) : resolve(row.count)
+		);
+	});
+}
+
+/**
+ * Get a character row by name (case-insensitive).
+ * @param {string} name
+ * @returns {Promise<{id: number, discord_id: string}>}
+ */
+async function getCharacterRowByName(name) {
+	return new Promise((resolve, reject) => {
+		db.get(
+			`SELECT id, discord_id FROM guild_members WHERE name = ? COLLATE NOCASE`,
+			[name],
+			(err, row) => err ? reject(err) : resolve(row)
+		);
+	});
+}
+
+/**
+ * Get all professions for a character (case-insensitive by name, based on recipes known).
+ * @param {string} characterName
+ * @returns {Promise<string[]>}
+ */
+async function getProfessionsForCharacter(characterName) {
+	return new Promise((resolve, reject) => {
+		db.all(
+			`SELECT DISTINCT p.name as profession
+			 FROM character_recipes cr
+			 JOIN professions p ON cr.profession_id = p.id
+			 JOIN guild_members gm ON cr.member_id = gm.id
+			 WHERE gm.name = ? COLLATE NOCASE`,
+			[characterName],
+			(err, rows) => err ? reject(err) : resolve(rows.map(row => row.profession))
+		);
+	});
+}
+
 // =============================
 // High-Level Sync Helpers
 // =============================
@@ -204,100 +465,6 @@ async function upsertCharacterRecipe(memberId, professionId, recipeId) {
 	});
 }
 
-// =============================
-// SQLite DB Implementation
-// =============================
-
-// --- Module Imports ---
-const sqlite3 = require('sqlite3').verbose();
-const debug = require('../../debug');
-const path = require('path');
-const { getBlizzardAccessToken, getProfessionsIndex, getSkillTiersForProfession, getRecipesForSkillTier } = require('../../../blizzard/api');
-
-// --- Database Initialization ---
-const dbPath = path.resolve(__dirname, '../../../../guilddata.sqlite');
-console.log('[DB] Using database file:', dbPath);
-const db = new sqlite3.Database(dbPath);
-
-// Enable foreign key support
-db.run('PRAGMA foreign_keys = ON;');
-
-db.serialize(() => {
-	debug.log('Initializing database tables...');
-
-	// Guild members (characters)
-	debug.log('guild_members...');
-	db.run(`
-		CREATE TABLE IF NOT EXISTS guild_members (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL,
-			realm TEXT NOT NULL,
-			discord_id TEXT,
-			class TEXT,
-			spec TEXT,
-			role TEXT,
-			is_main INTEGER DEFAULT 0,
-			UNIQUE(name, realm)
-		)
-	`);
-
-	// Master professions list
-	debug.log('professions...');
-	db.run(`
-		CREATE TABLE IF NOT EXISTS professions (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL UNIQUE,
-			profession_id INTEGER UNIQUE
-		);
-	`);
-
-	// Master recipes list
-	debug.log('recipes...');
-	db.run(`
-		CREATE TABLE IF NOT EXISTS recipes (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			profession_id INTEGER NOT NULL,
-			profession_name TEXT,
-			skill_tier_id INTEGER,
-			skill_tier_name TEXT,
-			recipe_id INTEGER,
-			recipe_name TEXT NOT NULL,
-			item_id INTEGER,
-			FOREIGN KEY(profession_id) REFERENCES professions(id)
-		)
-	`);
-
-	// Character <-> Recipe mapping
-	debug.log('character_recipes...');
-	db.run(`
-		CREATE TABLE IF NOT EXISTS character_recipes (
-			member_id INTEGER NOT NULL,
-			profession_id INTEGER NOT NULL,
-			recipe_id INTEGER NOT NULL,
-			max_skill_level INTEGER,
-			PRIMARY KEY (member_id, profession_id, recipe_id),
-			FOREIGN KEY (member_id) REFERENCES guild_members(id),
-			FOREIGN KEY (profession_id) REFERENCES professions(id),
-			FOREIGN KEY (recipe_id) REFERENCES recipes(id)
-		)
-	`);
-
-	// Add indexes for performance
-	db.run('CREATE INDEX IF NOT EXISTS idx_professions_name ON professions(name)');
-	db.run('CREATE INDEX IF NOT EXISTS idx_recipes_profession_id ON recipes(profession_id)');
-	db.run('CREATE INDEX IF NOT EXISTS idx_recipes_item_id ON recipes(item_id)');
-	db.run('CREATE INDEX IF NOT EXISTS idx_character_recipes_member_id ON character_recipes(member_id)');
-	db.run('CREATE INDEX IF NOT EXISTS idx_character_recipes_profession_id ON character_recipes(profession_id)');
-	db.run('CREATE INDEX IF NOT EXISTS idx_character_recipes_recipe_id ON character_recipes(recipe_id)');
-
-	debug.log("... database table creation complete!");
-
-	// Initialize master data after tables and indexes are created
-	initializeDb().catch(err => {
-		debug.log('[DB] Error initializing master data:', err);
-	});
-
-});
 
 async function populateProfessionsIfEmpty() {
 	await new Promise((resolve, reject) => {
@@ -472,12 +639,23 @@ function searchCraftersByItemId(itemId, callback) {
 // Module Exports
 // =============================
 module.exports = {
+	getClassAndSpecForCharacter,
 	run: (...args) => db.run(...args),
 	get: (...args) => db.get(...args),
 	all: (...args) => db.all(...args),
 	serialize: (fn) => db.serialize(fn),
 	searchCraftersByRecipeName,
 	searchCraftersByItemId,
+		// High-level character helpers
+		getClaimedCharacterCount,
+		getCharacterRowByName,
+		claimCharacter,
+		unsetMainForUser,
+		setMainCharacter,
+		getCharacterRowForUnclaim,
+		unclaimCharacter,
+		listClaimedCharacters,
+		getProfessionsForCharacter,
 	// High-level sync helpers
 	deleteDepartedMembers,
 	cleanupOrphanedCharacterRecipes,

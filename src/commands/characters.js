@@ -1,3 +1,10 @@
+// Assign all Discord roles for a main character (professions, spec/class, main role)
+async function assignAllMainRoles(guild, member, characterName) {
+    await removeOldProfessionRoles(guild, member);
+    await assignProfessionRoles(guild, member, characterName);
+    await removeOldSpecClassAndMainRoles(guild, member);
+    await assignSpecClassAndMainRole(guild, member, characterName);
+}
 const { SlashCommandBuilder } = require('discord.js');
 const db = require('../data/db');
 
@@ -33,55 +40,35 @@ async function removeOldSpecClassAndMainRoles(guild, member) {
 
 // Assign all profession roles for a character
 async function assignProfessionRoles(guild, member, characterName) {
-    await new Promise((resolve) => {
-        db.all(
-            `SELECT profession FROM professions
-             JOIN guild_members ON professions.member_id = guild_members.id
-             WHERE guild_members.name = ?`,
-            [characterName],
-            async (err, rows) => {
-                if (err) return resolve();
-                const professions = rows.map(row => row.profession);
-                for (const prof of professions) {
-                    const role = guild.roles.cache.find(r => r.name.toLowerCase() === prof.toLowerCase());
-                    if (role && !member.roles.cache.has(role.id)) {
-                        try { await member.roles.add(role); } catch (e) { }
-                    }
-                }
-                resolve();
-            }
-        );
-    });
+    const professions = await db.getProfessionsForCharacter(characterName);
+    for (const prof of professions) {
+        const role = guild.roles.cache.find(r => r.name.toLowerCase() === prof.toLowerCase());
+        if (role && !member.roles.cache.has(role.id)) {
+            try { await member.roles.add(role); } catch (e) { }
+        }
+    }
 }
 
 // Assign spec/class and main role for a character
 async function assignSpecClassAndMainRole(guild, member, characterName) {
-    await new Promise((resolve) => {
-        db.get(
-            `SELECT class, spec FROM guild_members WHERE name = ?`,
-            [characterName],
-            async (err, row) => {
-                if (err || !row) return resolve();
-                // Assign Spec+Class role
-                if (row.class && row.spec) {
-                    const specClass = `${row.spec} ${row.class}`.trim();
-                    const role = guild.roles.cache.find(r => r.name.toLowerCase() === specClass.toLowerCase());
-                    if (role && !member.roles.cache.has(role.id)) {
-                        try { await member.roles.add(role); } catch (e) { }
-                    }
-                    // Assign Main Role (Tank, Healer, Ranged DPS, Melee DPS)
-                    const mainRoleName = getMainRoleForSpecClass(row.spec, row.class);
-                    if (mainRoleName && mainRoleName !== "-") {
-                        const mainRole = guild.roles.cache.find(r => r.name.toLowerCase() === mainRoleName.toLowerCase());
-                        if (mainRole && !member.roles.cache.has(mainRole.id)) {
-                            try { await member.roles.add(mainRole); } catch (e) { }
-                        }
-                    }
-                }
-                resolve();
+    const row = await db.getClassAndSpecForCharacter(characterName);
+    if (!row) return;
+    // Assign Spec+Class role
+    if (row.class && row.spec) {
+        const specClass = `${row.spec} ${row.class}`.trim();
+        const role = guild.roles.cache.find(r => r.name.toLowerCase() === specClass.toLowerCase());
+        if (role && !member.roles.cache.has(role.id)) {
+            try { await member.roles.add(role); } catch (e) { }
+        }
+        // Assign Main Role (Tank, Healer, Ranged DPS, Melee DPS)
+        const mainRoleName = getMainRoleForSpecClass(row.spec, row.class);
+        if (mainRoleName && mainRoleName !== "-") {
+            const mainRole = guild.roles.cache.find(r => r.name.toLowerCase() === mainRoleName.toLowerCase());
+            if (mainRole && !member.roles.cache.has(mainRole.id)) {
+                try { await member.roles.add(mainRole); } catch (e) { }
             }
-        );
-    });
+        }
+    }
 }
 
 // Remove all relevant roles (professions, spec/class, main role)
@@ -150,170 +137,102 @@ module.exports = {
             const character = interaction.options.getString('character');
             let isMain = interaction.options.getBoolean('ismain');
 
-            // Check if user already has any claimed characters (excluding this one)
-            db.get(
-                `SELECT COUNT(*) as count FROM guild_members WHERE discord_id = ? AND name != ?`,
-                [discordId, character],
-                (err, countRow) => {
-                    if (err) {
-                        console.error(err);
-                        return interaction.reply('Database error.');
-                    }
-                    // If user has no other claimed characters, default isMain to true
-                    if (countRow.count === 0) {
-                        isMain = true;
-                    }
-
-                    db.get(
-                        `SELECT id, discord_id FROM guild_members WHERE name = ?`,
-                        [character],
-                        (err, row) => {
-                            if (err) {
-                                console.error(err);
-                                return interaction.reply('Database error.');
-                            }
-                            if (!row) {
-                                return interaction.reply('Character not found in the guild database.');
-                            }
-                            if (row.discord_id && row.discord_id !== discordId) {
-                                return interaction.reply('Character already claimed by another user.');
-                            }
-                            // Claim the character
-                            db.run(
-                                `UPDATE guild_members SET discord_id = ? WHERE id = ?`,
-                                [discordId, row.id],
-                                async (err2) => {
-                                    if (err2) {
-                                        console.error(err2);
-                                        return interaction.reply('Failed to claim character.');
-                                    }
-                                    let msg = `✅ ${character} claimed!`;
-                                    if (isMain) {
-                                        // Unset previous main for this user
-                                        db.run(
-                                            `UPDATE guild_members SET is_main = 0 WHERE discord_id = ?`,
-                                            [discordId],
-                                            async () => {
-                                                // Set this character as main
-                                                db.run(
-                                                    `UPDATE guild_members SET is_main = 1 WHERE id = ?`,
-                                                    [row.id],
-                                                    async () => {
-                                                        // Remove all roles, assign new ones
-                                                        await removeAllRelevantRoles(guild, member);
-                                                        await assignAllRolesForCharacter(guild, member, character);
-                                                        msg += ` Set as your main. Roles updated.`;
-                                                        return interaction.reply(msg);
-                                                    }
-                                                );
-                                            }
-                                        );
-                                    } else {
-                                        // Just claim, don't change main or roles
-                                        return interaction.reply(msg);
-                                    }
-                                }
-                            );
-                        }
-                    );
+            try {
+                // Check if user already has any claimed characters (excluding this one)
+                const claimedCount = await db.getClaimedCharacterCount(discordId, character);
+                if (claimedCount === 0) {
+                    isMain = true;
                 }
-            );
+
+                // Get the character row
+                const charRow = await db.getCharacterRowByName(character);
+                if (!charRow) {
+                    return interaction.reply('Character not found in the guild database.');
+                }
+                if (charRow.discord_id && charRow.discord_id !== discordId) {
+                    return interaction.reply('Character already claimed by another user.');
+                }
+
+                // Claim the character
+                await db.claimCharacter(discordId, charRow.id);
+
+                let msg = `✅ ${character} claimed!`;
+                if (isMain) {
+                    await db.unsetMainForUser(discordId);
+                    await db.setMainCharacter(charRow.id);
+                    await assignAllMainRoles(guild, member, character);
+                    msg += ` Set as your main. Roles updated.`;
+                }
+                return interaction.reply(msg);
+            } catch (err) {
+                console.error(err);
+                return interaction.reply('Database error.');
+            }
         }
 
         else if (subcommand === 'unclaim') {
             const character = interaction.options.getString('character');
-            db.get(
-                `SELECT id, discord_id, is_main FROM guild_members WHERE name = ?`,
-                [character],
-                async (err, row) => {
-                    if (err) {
-                        console.error(err);
-                        return interaction.reply('Database error.');
-                    }
-                    if (!row || row.discord_id !== discordId) {
-                        return interaction.reply('You must claim this character first.');
-                    }
-                    // If this was your main, unset is_main and remove roles
-                    if (row.is_main) {
-                        await removeAllRelevantRoles(guild, member);
-                    }
-                    db.run(
-                        `UPDATE guild_members SET discord_id = NULL, is_main = 0 WHERE id = ?`,
-                        [row.id],
-                        (err2) => {
-                            if (err2) {
-                                console.error(err2);
-                                return interaction.reply('Failed to unclaim character.');
-                            }
-                            return interaction.reply(`✅ ${character} has been unclaimed.`);
-                        }
-                    );
+            try {
+                const row = await db.getCharacterRowForUnclaim(character);
+                if (!row || row.discord_id !== discordId) {
+                    return interaction.reply('You must claim this character first.');
                 }
-            );
+                // If this was your main, unset is_main and remove roles
+                if (row.is_main) {
+                    await removeAllRelevantRoles(guild, member);
+                }
+                await db.unclaimCharacter(row.id);
+                return interaction.reply(`✅ ${character} has been unclaimed.`);
+            } catch (err) {
+                console.error(err);
+                return interaction.reply('Database error.');
+            }
         }
 
         else if (subcommand === 'list') {
-            db.all(
-                `SELECT name, class, spec, role, is_main FROM guild_members WHERE discord_id = ? ORDER BY name`,
-                [discordId],
-                (err, rows) => {
-                    if (err) {
-                        console.error(err);
-                        return interaction.reply('Database error.');
-                    }
-                    if (!rows.length) {
-                        return interaction.reply('You have not claimed any characters.');
-                    }
-
-                    // Set column widths to match the header
-                    const header = `Character           | Class         | Spec           | Role          | Main`;
-                    const separator = `--------------------|---------------|----------------|---------------|------`;
-                    const lines = rows.map(row =>
+            try {
+                const rows = await db.listClaimedCharacters(discordId);
+                if (!rows.length) {
+                    return interaction.reply('You have not claimed any characters.');
+                }
+                // Set column widths to match the header
+                const header = `Character           | Class         | Spec           | Role          | Main`;
+                const separator = `--------------------|---------------|----------------|---------------|------`;
+                const lines = rows.map(row => {
+                    const roleName = (row.class && row.spec)
+                        ? getMainRoleForSpecClass(row.spec, row.class)
+                        : '-';
+                    return (
                         `${row.name.padEnd(20)}| ` +
                         `${String(row.class ?? '-').padEnd(14)}| ` +
                         `${String(row.spec ?? '-').padEnd(15)}| ` +
-                        `${String(row.role ?? '-').padEnd(14)}| ` +
+                        `${String(roleName ?? '-').padEnd(14)}| ` +
                         `${row.is_main ? 'YES' : ''}`
                     );
-                    const table = [header, separator, ...lines].join('\n');
-                    interaction.reply(`\`\`\`\n${table}\n\`\`\``);
-                }
-            );
+                });
+                const table = [header, separator, ...lines].join('\n');
+                interaction.reply(`\`\`\`${table}\`\`\``);
+            } catch (err) {
+                console.error(err);
+                return interaction.reply('Database error.');
+            }
         }
 
         else if (subcommand === 'setmain') {
             const character = interaction.options.getString('character');
-            db.get(
-                `SELECT id, discord_id FROM guild_members WHERE name = ?`,
-                [character],
-                async (err, row) => {
-                    if (err) {
-                        console.error(err);
-                        return interaction.reply('Database error.');
-                    }
-                    if (!row || row.discord_id !== discordId) {
-                        return interaction.reply('You must claim this character first.');
-                    }
-                    // Unset previous main for this user
-                    db.run(
-                        `UPDATE guild_members SET is_main = 0 WHERE discord_id = ?`,
-                        [discordId],
-                        async () => {
-                            // Set this character as main
-                            db.run(
-                                `UPDATE guild_members SET is_main = 1 WHERE id = ?`,
-                                [row.id],
-                                async () => {
-                                    // Remove all roles, assign new ones
-                                    await removeAllRelevantRoles(guild, member);
-                                    await assignAllRolesForCharacter(guild, member, character);
-                                    return interaction.reply(`${character} is now your main. Roles updated.`);
-                                }
-                            );
-                        }
-                    );
+            try {
+                const row = await db.getCharacterRowByName(character);
+                if (!row || row.discord_id !== discordId) {
+                    return interaction.reply('You must claim this character first.');
                 }
-            )
+                await db.unsetMainForUser(discordId);
+                await db.setMainCharacter(row.id);
+                await assignAllMainRoles(guild, member, character);
+                return interaction.reply(`${character} is now your main. Roles updated.`);
+            } catch (err) {
+                console.error(err);
+                return interaction.reply('Database error.');
+            }
         }
 
     },
@@ -362,21 +281,7 @@ module.exports = {
         else if (subcommand === 'setmain') {
             // Suggest characters claimed by this user
             const discordId = interaction.user.id;
-            db.all(
-                `SELECT name FROM guild_members WHERE discord_id = ? AND name LIKE ? ORDER BY name LIMIT 25`,
-                [discordId, `%${focused}%`],
-                (err, rows) => {
-                    if (err) {
-                        console.error(err);
-                        return interaction.respond([]);
-                    }
-                    const choices = rows.map(row => ({
-                        name: row.name,
-                        value: row.name
-                    }));
-                    interaction.respond(choices);
-                }
-            );
+            newFunction(discordId, focused, interaction);
         }
 
         else {
@@ -385,3 +290,21 @@ module.exports = {
     }
 
 };
+
+function newFunction(discordId, focused, interaction) {
+    db.all(
+        `SELECT name FROM guild_members WHERE discord_id = ? AND name LIKE ? ORDER BY name LIMIT 25`,
+        [discordId, `%${focused}%`],
+        (err, rows) => {
+            if (err) {
+                console.error(err);
+                return interaction.respond([]);
+            }
+            const choices = rows.map(row => ({
+                name: row.name,
+                value: row.name
+            }));
+            interaction.respond(choices);
+        }
+    );
+}
