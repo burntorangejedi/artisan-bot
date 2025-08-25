@@ -1,52 +1,3 @@
-// Fetch profession details (returns object with .tiers)
-async function getSkillTiersForProfession(professionId, accessToken) {
-  const url = `https://${REGION}.api.blizzard.com/data/wow/profession/${professionId}?namespace=static-${REGION}&locale=${LOCALE}`;
-  debug.log('Fetching skill tiers for profession from:', url);
-  try {
-    const response = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
-    });
-    return response.data;
-  } catch (err) {
-    debug.log(`Failed to fetch skill tiers for profession ${professionId}: ${err.response ? err.response.status : err.message}`);
-    return null;
-  }
-}
-// Fetch skill tiers for a profession
-async function getSkillTiersForProfession(professionId, accessToken) {
-  const url = `https://${REGION}.api.blizzard.com/data/wow/profession/${professionId}?namespace=static-${REGION}&locale=${LOCALE}`;
-  debug.log('Fetching profession details from:', url);
-  try {
-    const response = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
-    });
-    return response.data;
-  } catch (err) {
-    debug.log(`Failed to fetch profession details for ${professionId}: ${err.response ? err.response.status : err.message}`);
-    return null;
-  }
-}
-
-// Fetch recipes for a skill tier (categories and recipes)
-async function getRecipesForSkillTier(professionId, skillTierId, accessToken) {
-  const url = `https://${REGION}.api.blizzard.com/data/wow/profession/${professionId}/skill-tier/${skillTierId}?namespace=static-${REGION}&locale=${LOCALE}`;
-  debug.log('Fetching profession skill tier from:', url);
-  try {
-    const response = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
-    });
-    return response.data;
-  } catch (err) {
-    debug.log(`Failed to fetch skill tier ${skillTierId} for profession ${professionId}: ${err.response ? err.response.status : err.message}`);
-    return null;
-  }
-}
 const axios = require('axios');
 const debug = require('../data/debug');
 
@@ -56,8 +7,58 @@ const LOCALE = settings.LOCALE;
 const BLIZZARD_CLIENT_ID = settings.BLIZZARD_CLIENT_ID;
 const BLIZZARD_CLIENT_SECRET = settings.BLIZZARD_CLIENT_SECRET;
 
+// Fetch profession details (returns object with .tiers)
+async function getSkillTiersForProfession(professionId, accessToken) {
+  const url = `https://${REGION}.api.blizzard.com/data/wow/profession/${professionId}?namespace=static-${REGION}&locale=${LOCALE}`;
+  debug.verbose('Fetching skill tiers for profession from:', url);
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+    return response.data;
+  } catch (err) {
+    debug.error(`Failed to fetch skill tiers for profession ${professionId}: ${err.response ? err.response.status : err.message}`);
+    return null;
+  }
+}
+
+// Fetch skill tiers for a profession
+async function getSkillTiersForProfession(professionId, accessToken) {
+  const url = `https://${REGION}.api.blizzard.com/data/wow/profession/${professionId}?namespace=static-${REGION}&locale=${LOCALE}`;
+  debug.verbose('Fetching profession details from:', url);
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+    return response.data;
+  } catch (err) {
+    debug.error(`Failed to fetch profession details for ${professionId}: ${err.response ? err.response.status : err.message}`);
+    return null;
+  }
+}
+
+// Fetch recipes for a skill tier (categories and recipes)
+async function getRecipesForSkillTier(professionId, skillTierId, accessToken) {
+  const url = `https://${REGION}.api.blizzard.com/data/wow/profession/${professionId}/skill-tier/${skillTierId}?namespace=static-${REGION}&locale=${LOCALE}`;
+  debug.verbose('Fetching profession skill tier from:', url);
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+    return response.data;
+  } catch (err) {
+    debug.error(`Failed to fetch skill tier ${skillTierId} for profession ${professionId}: ${err.response ? err.response.status : err.message}`);
+    return null;
+  }
+}
 async function getBlizzardAccessToken() {
-  debug.log('Fetching accessToken from Blizzard API...');
+  debug.verbose('Fetching accessToken from Blizzard API...');
   const response = await axios.post(
     `https://${REGION}.battle.net/oauth/token`,
     'grant_type=client_credentials',
@@ -68,7 +69,7 @@ async function getBlizzardAccessToken() {
       },
     }
   );
-  debug.log('Fetched accessToken: ', response.data.access_token);
+  debug.verbose('Fetched accessToken: ', response.data.access_token);
   return response.data.access_token;
 }
 
@@ -97,7 +98,7 @@ async function getCharacterProfessions(realmSlug, charName, token) {
     });
     return response.data;
   } catch (err) {
-    console.warn(`Failed profession fetch for ${charName}: ${err.response ? err.response.status : err.message}`);
+    debug.error(`Failed profession fetch for ${charName}: ${err.response ? err.response.status : err.message}`);
     return null;
   }
 }
@@ -113,14 +114,14 @@ async function getCharacterSummary(realmSlug, charName, token) {
     });
     return response.data;
   } catch (err) {
-    console.warn(`Failed summary fetch for ${charName}: ${err.response ? err.response.status : err.message}`);
+    console.error(`Failed summary fetch for ${charName}: ${err.response ? err.response.status : err.message}`);
     return null;
   }
 }
 
 async function getCharacterSpecialization(realmSlug, charName, token) {
   const url = `https://${REGION}.api.blizzard.com/profile/wow/character/${realmSlug}/${charName.toLowerCase()}/specializations?namespace=profile-${REGION}&locale=${LOCALE}`;
-  debug.log('Fetching character Specialization from:', url);
+  debug.verbose('Fetching character Specialization from:', url);
   try {
     const response = await axios.get(url, {
       headers: {
@@ -129,7 +130,7 @@ async function getCharacterSpecialization(realmSlug, charName, token) {
     });
     return response.data;
   } catch (err) {
-    console.warn(`Failed specialization fetch for ${charName}: ${err.response ? err.response.status : err.message}`);
+    console.error(`Failed specialization fetch for ${charName}: ${err.response ? err.response.status : err.message}`);
     return null;
   }
 }
@@ -138,7 +139,7 @@ async function getCharacterSpecialization(realmSlug, charName, token) {
 // Fetch all recipe references for a profession from Blizzard API
 async function getProfessionRecipeIndex(professionId, accessToken) {
   const url = `https://${REGION}.api.blizzard.com/data/wow/profession/${professionId}/recipe/index?namespace=static-${REGION}&locale=${LOCALE}`;
-  debug.log('Fetching profession recipe index from:', url);
+  debug.verbose('Fetching profession recipe index from:', url);
   try {
     const response = await axios.get(url, {
       headers: {
@@ -148,7 +149,7 @@ async function getProfessionRecipeIndex(professionId, accessToken) {
     // Returns { recipes: [ { id, name }, ... ] }
     return response.data;
   } catch (err) {
-    debug.log(`Failed to fetch recipe index for profession ${professionId}: ${err.response ? err.response.status : err.message}`);
+    debug.error(`Failed to fetch recipe index for profession ${professionId}: ${err.response ? err.response.status : err.message}`);
     return null;
   }
 }
@@ -156,7 +157,7 @@ async function getProfessionRecipeIndex(professionId, accessToken) {
 // Fetch recipe details from Blizzard API by recipe ID
 async function getRecipeDetails(recipeId, accessToken) {
   const url = `https://${REGION}.api.blizzard.com/data/wow/recipe/${recipeId}?namespace=static-${REGION}&locale=${LOCALE}`;
-  debug.log('Fetching recipe details from:', url);
+  debug.verbose('Fetching recipe details from:', url);
   try {
     const response = await axios.get(url, {
       headers: {
@@ -168,7 +169,7 @@ async function getRecipeDetails(recipeId, accessToken) {
     const item_id = response.data.crafted_item ? response.data.crafted_item.id : null;
     return { name, item_id };
   } catch (err) {
-    debug.log(`Failed to fetch recipe details for ID ${recipeId}: ${err.response ? err.response.status : err.message}`);
+    debug.error(`Failed to fetch recipe details for ID ${recipeId}: ${err.response ? err.response.status : err.message}`);
     return null;
   }
 }
@@ -177,7 +178,7 @@ async function getRecipeDetails(recipeId, accessToken) {
 // Fetch the professions index from Blizzard API
 async function getProfessionsIndex(accessToken) {
   const url = `https://${REGION}.api.blizzard.com/data/wow/profession/index?namespace=static-${REGION}&locale=${LOCALE}`;
-  debug.log('Fetching professions index from:', url);
+  debug.verbose('Fetching professions index from:', url);
   try {
     const response = await axios.get(url, {
       headers: {
@@ -187,7 +188,7 @@ async function getProfessionsIndex(accessToken) {
     // Returns { professions: [ { id, name }, ... ] }
     return response.data;
   } catch (err) {
-    debug.log(`Failed to fetch professions index: ${err.response ? err.response.status : err.message}`);
+    debug.error(`Failed to fetch professions index: ${err.response ? err.response.status : err.message}`);
     return null;
   }
 }

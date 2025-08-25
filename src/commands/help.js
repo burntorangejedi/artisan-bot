@@ -11,9 +11,9 @@ const helpText = `**Artisan Bot Commands**
   • /characters unclaim <character> — Unclaim a character you previously claimed
 
 **Admin Functions**
-/sync-guild — Admin: Sync or refresh guild data from Blizzard API (updates roster, professions, and recipes)
-/guild-roles add — Admin: Create all class/spec, main, and profession roles
-/guild-roles remove — Admin: Remove all class/spec, main, and profession roles
+/admin sync — Admin: Sync or refresh guild data from Blizzard API (updates roster, professions, and recipes)
+/admin add-roles — Admin: Create all class/spec, main, and profession roles
+/admin remove-roles — Admin: Remove all class/spec, main, and profession roles
 
 Other commands may be available depending on your guild's configuration.
 `;

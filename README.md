@@ -19,14 +19,14 @@
 3. **Create all Discord roles**  
    Run the following command in your Discord server (admin only):  
    ```
-   /guild-roles add
+   /admin add-roles
    ```
    This will create all class/spec, main role, and profession roles with appropriate colors.
 
 4. **Sync the guild roster and professions**  
    Run:  
    ```
-   /sync-guild
+   /admin sync
    ```
    This fetches the latest roster and profession/spec data from Blizzard and populates the database.
 
@@ -49,8 +49,8 @@
 
 - **Automatic role assignment** for class/spec, main role (Tank/Healer/DPS), and professions when a character is claimed
 - **Profession and recipe search** with `/whohas` (supports pagination with Next/Previous buttons)
-- **Easy guild roster and profession syncing** with `/sync-guild`
-- **Admin commands** for bulk role management (`/guild-roles add`/`remove`)
+- **Easy guild roster and profession syncing** with `/admin sync`
+- **Admin commands** for bulk role management (`/admin add-roles`/`remove-roles`)
 - **Character claiming and management** with `/characters` commands
 - **/help command** for in-Discord command reference
 ## ⚙️ Environment Variables
@@ -66,7 +66,7 @@ You can configure the bot using a `.env` file in the project root. Key variables
 
 **/help** — Show a summary of all commands and features
 
-**/sync-guild** — Admin: Sync or refresh guild data from Blizzard API (updates roster, professions, and recipes)
+**/admin sync** — Admin: Sync or refresh guild data from Blizzard API (updates roster, professions, and recipes)
 
 **/whohas <item/recipe>** — Find out who can craft a specific recipe or item (supports pagination with Next/Previous buttons)
 
@@ -76,8 +76,8 @@ You can configure the bot using a `.env` file in the project root. Key variables
    • `/characters list` — List all characters you have claimed (shows class, spec, main role, and main status)
    • `/characters unclaim <character>` — Unclaim a character you previously claimed
 
-**/guild-roles add** — Admin: Create all class/spec, main, and profession roles
-**/guild-roles remove** — Admin: Remove all class/spec, main, and profession roles
+**/admin add-roles** — Admin: Create all class/spec, main, and profession roles
+**/admin remove-roles** — Admin: Remove all class/spec, main, and profession roles
 
 ---
 

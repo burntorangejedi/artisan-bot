@@ -5,7 +5,7 @@ const settings = require('../settings');
 const DEBUG_LEVEL = settings.DEBUG_LEVEL;
 
 function log(...args) {
-  if (DEBUG_LEVEL === 'debug' || DEBUG_LEVEL === 'verbose') {
+  if (DEBUG_LEVEL === 'log') {
     const formatted = args.map(arg =>
       typeof arg === 'object'
         ? JSON.stringify(arg, null, 2)
@@ -16,7 +16,7 @@ function log(...args) {
 }
 
 function verbose(...args) {
-  if (DEBUG_LEVEL === 'verbose') {
+  if (DEBUG_LEVEL === 'log' || DEBUG_LEVEL === 'verbose') {
     const formatted = args.map(arg =>
       typeof arg === 'object'
         ? JSON.stringify(arg, null, 2)
@@ -26,9 +26,31 @@ function verbose(...args) {
   }
 }
 
+function error(...args) {
+  if (DEBUG_LEVEL === 'log' || DEBUG_LEVEL === 'verbose') {
+    const formatted = args.map(arg =>
+      typeof arg === 'object'
+        ? JSON.stringify(arg, null, 2)
+        : arg
+    );
+    console.error('[ERROR]', ...formatted);
+  }
+}
+
+function warn(...args) {
+  const formatted = args.map(arg =>
+    typeof arg === 'object'
+      ? JSON.stringify(arg, null, 2)
+      : arg
+  );
+  console.warn('[WARN]', ...formatted);
+}
+
 module.exports = {
   isDebug: () => DEBUG_LEVEL === 'debug' || DEBUG_LEVEL === 'verbose',
   isVerbose: () => DEBUG_LEVEL === 'verbose',
   log: log,
-  verbose: verbose
+  verbose: verbose,
+  error: error,
+  warn: warn
 };
