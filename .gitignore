@@ -8,6 +8,7 @@ lerna-debug.log*
 
 #databases
 .sqlite
+.sqlite-journal
 *.sqlite
 *.db
 *.rdb

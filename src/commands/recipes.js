@@ -53,28 +53,21 @@ module.exports = {
         (err, rows) => {
           if (err) return interaction.editReply('Error searching recipes.');
           if (!rows || !rows.length) return interaction.editReply(`No recipes found matching "${name}".`);
-          if (rows.length === 1) {
-            const r = rows[0];
-            const embed = new EmbedBuilder()
-              .setTitle(r.recipe_name)
-              .addFields(
-                { name: 'Profession', value: r.profession_name || 'Unknown', inline: true },
-                { name: 'Skill Tier', value: r.skill_tier_name || 'Unknown', inline: true },
-                { name: 'Recipe ID', value: String(r.recipe_id), inline: true },
-                { name: 'Item ID', value: r.item_id ? String(r.item_id) : 'Unknown', inline: true }
-              );
-            debug.log({ embeds: [embed] });
-            return interaction.editReply({ embeds: [embed] });
-          }
+          debug.log(rows);
           // Multiple matches: add as embed fields (Discord limits fields to 25)
-          const embed = new EmbedBuilder()
-            .setTitle(`Recipes matching "${name}" (${rows.length})`)
-            .addFields(
-              { name: 'Profession', value: r.profession_name || 'Unknown', inline: true },
-              { name: 'Skill Tier', value: r.skill_tier_name || 'Unknown', inline: true },
-              { name: 'Recipe ID', value: String(r.recipe_id), inline: true },
-              { name: 'Item ID', value: r.item_id ? String(r.item_id) : 'Unknown', inline: true }
-            );
+          const embed = new EmbedBuilder().setTitle(`Recipes matching "${name}" (${rows.length})`);
+          // Put the "max of 25" note in the footer so the title remains a single line
+          if (rows.length === 25) {
+            embed.setFooter({ text: `Showing first 25 results - please narrow your search critiera` });
+          }
+          const fields = rows.slice(0, 25).map(r => {
+            const prof = r.profession_name || 'Unknown';
+            const tier = r.skill_tier_name ? `, Tier: ${r.skill_tier_name}` : '';
+            const item = r.item_id ? `, Item ID: ${r.item_id}` : '';
+            const value = `Recipe ID: ${r.recipe_id || 'N/A'} ${item} — ${prof}${tier}`;
+            return { name: r.recipe_name || `Recipe ${r.recipe_id || r.id}`, value: value, inline: false };
+          });
+          embed.addFields(fields);
           debug.log({ embeds: [embed] });
           interaction.editReply({ embeds: [embed] });
         }
