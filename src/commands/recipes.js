@@ -53,7 +53,6 @@ module.exports = {
         (err, rows) => {
           if (err) return interaction.editReply('Error searching recipes.');
           if (!rows || !rows.length) return interaction.editReply(`No recipes found matching "${name}".`);
-          debug.log(rows);
           // Multiple matches: add as embed fields (Discord limits fields to 25)
           const embed = new EmbedBuilder().setTitle(`Recipes matching "${name}" (${rows.length})`);
           // Put the "max of 25" note in the footer so the title remains a single line
@@ -68,7 +67,6 @@ module.exports = {
             return { name: r.recipe_name || `Recipe ${r.recipe_id || r.id}`, value: value, inline: false };
           });
           embed.addFields(fields);
-          debug.log({ embeds: [embed] });
           interaction.editReply({ embeds: [embed] });
         }
       );
