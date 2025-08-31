@@ -28,6 +28,16 @@ const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('
 const commands = [];
 for (const file of commandFiles) {
   const command = require(path.join(commandsPath, file));
+  // Skip files that don't export a valid SlashCommand (protect against empty/malformed files)
+  if (!command || !command.data || !command.data.name) {
+    // Use debug.warn if available, otherwise fall back to console.warn
+    if (debug && typeof debug.warn === 'function') {
+      debug.warn(`Skipping invalid or empty command file: ${file}`);
+    } else {
+      console.warn(`Skipping invalid or empty command file: ${file}`);
+    }
+    continue;
+  }
   client.commands.set(command.data.name, command);
   commands.push(command.data.toJSON());
 }

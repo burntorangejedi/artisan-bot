@@ -5,15 +5,19 @@ const helpText = `**Artisan Bot Commands**
 /whohas <item/recipe> — Find out who can craft a specific recipe or item (supports pagination with Next/Previous buttons)
 
 **/characters** — Manage your claimed characters:
-  • /characters claim <character> — Claim a character as your own
-  • /characters setmain <character> — Set one of your claimed characters as your main
+  • /characters claim <character> — Claim a character as your own (autocomplete supported)
+  • /characters setmain <character> — Set one of your claimed characters as your main (autocomplete supported)
   • /characters list — List all characters you have claimed (shows class, spec, main role, and main status)
-  • /characters unclaim <character> — Unclaim a character you previously claimed
+  • /characters unclaim <character> — Unclaim a character you previously claimed (autocomplete supported)
+
+**/recipes**
+  • /recipes info <id> — Show details for a specific recipe by internal ID
 
 **Admin Functions**
-/admin sync — Admin: Sync or refresh guild data from Blizzard API (updates roster, professions, and recipes)
-/admin add-roles — Admin: Create all class/spec, main, and profession roles
-/admin remove-roles — Admin: Remove all class/spec, main, and profession roles
+  • /admin sync — Admin: Sync or refresh guild data from Blizzard API (updates roster, professions, and recipes)
+  • /admin add-roles — Admin: Create all class/spec, main, and profession roles
+  • /admin remove-roles — Admin: Remove all class/spec, main, and profession roles
+  • /admin import-grm <file> — Admin: Import a Guild_Roster_Manager.lua file (upload)
 
 Other commands may be available depending on your guild's configuration.
 `;

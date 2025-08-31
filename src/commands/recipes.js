@@ -1,68 +1,88 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../data/db');
+const debug = require('../data/debug');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('recipes')
-    .setDescription('List or look up recipes by ID')
-    .addSubcommand(sub =>
-      sub.setName('list')
-        .setDescription('List all recipes (paginated)')
-        .addIntegerOption(opt =>
-          opt.setName('page')
-            .setDescription('Page number (default 1)')
-            .setRequired(false)
-        )
+    .setDescription('Search recipes by ID or partial name')
+    .addIntegerOption(opt =>
+      opt.setName('id')
+        .setDescription('Recipe ID')
+        .setRequired(false)
     )
-    .addSubcommand(sub =>
-      sub.setName('info')
-        .setDescription('Get details for a recipe by ID')
-        .addIntegerOption(opt =>
-          opt.setName('id')
-            .setDescription('Recipe ID')
-            .setRequired(true)
-        )
+    .addStringOption(opt =>
+      opt.setName('name')
+        .setDescription('Partial or full recipe name to search for')
+        .setRequired(false)
     ),
 
   async execute(interaction) {
-    const sub = interaction.options.getSubcommand();
-    if (sub === 'list') {
-      const page = interaction.options.getInteger('page') || 1;
-      const pageSize = 10;
-      const offset = (page - 1) * pageSize;
-      db.all(
-        'SELECT id, recipe_name, profession_name, skill_tier_name FROM recipes ORDER BY profession_name, recipe_name LIMIT ? OFFSET ?',
-        [pageSize, offset],
-        (err, rows) => {
-          if (err) return interaction.reply('Error fetching recipes.');
-          if (!rows.length) return interaction.reply('No recipes found for this page.');
-          const lines = rows.map(r => `**${r.recipe_name}** (ID: ${r.id})\nProfession: ${r.profession_name}${r.skill_tier_name ? `, Tier: ${r.skill_tier_name}` : ''}`);
-          const embed = new EmbedBuilder()
-            .setTitle(`Recipes List (Page ${page})`)
-            .setDescription(lines.join('\n\n'));
-          interaction.reply({ embeds: [embed] });
-        }
-      );
-    } else if (sub === 'info') {
-      const id = interaction.options.getInteger('id');
+    const id = interaction.options.getInteger('id');
+    const name = interaction.options.getString('name');
+
+    // Defer reply to give DB queries time and avoid the "The application did not respond" timeout
+    await interaction.deferReply();
+
+    if (id) {
       db.get(
-        'SELECT * FROM recipes WHERE id = ?',
+        'SELECT * FROM recipes WHERE recipe_id = ?',
         [id],
         (err, row) => {
-          if (err) return interaction.reply('Error fetching recipe.');
-          if (!row) return interaction.reply(`No recipe found with ID ${id}.`);
+          if (err) return interaction.editReply('Error fetching recipe.');
+          if (!row) return interaction.editReply(`No recipe found with Recipe Id ${id}.`);
           const embed = new EmbedBuilder()
             .setTitle(row.recipe_name)
             .addFields(
               { name: 'Profession', value: row.profession_name || 'Unknown', inline: true },
               { name: 'Skill Tier', value: row.skill_tier_name || 'Unknown', inline: true },
-              { name: 'Recipe ID', value: String(row.id), inline: true },
-              { name: 'Blizzard Recipe ID', value: String(row.recipe_id || 'Unknown'), inline: true },
+              { name: 'Recipe ID', value: String(row.recipe_id), inline: true },
               { name: 'Item ID', value: row.item_id ? String(row.item_id) : 'Unknown', inline: true }
             );
-          interaction.reply({ embeds: [embed] });
+          interaction.editReply({ embeds: [embed] });
         }
       );
+      return;
     }
+
+    if (name) {
+      const q = `%${name}%`;
+      db.all(
+        'SELECT * FROM recipes WHERE recipe_name LIKE ? ORDER BY profession_name, recipe_name LIMIT 25',
+        [q],
+        (err, rows) => {
+          if (err) return interaction.editReply('Error searching recipes.');
+          if (!rows || !rows.length) return interaction.editReply(`No recipes found matching "${name}".`);
+          if (rows.length === 1) {
+            const r = rows[0];
+            const embed = new EmbedBuilder()
+              .setTitle(r.recipe_name)
+              .addFields(
+                { name: 'Profession', value: r.profession_name || 'Unknown', inline: true },
+                { name: 'Skill Tier', value: r.skill_tier_name || 'Unknown', inline: true },
+                { name: 'Recipe ID', value: String(r.recipe_id), inline: true },
+                { name: 'Item ID', value: r.item_id ? String(r.item_id) : 'Unknown', inline: true }
+              );
+            debug.log({ embeds: [embed] });
+            return interaction.editReply({ embeds: [embed] });
+          }
+          // Multiple matches: add as embed fields (Discord limits fields to 25)
+          const embed = new EmbedBuilder()
+            .setTitle(`Recipes matching "${name}" (${rows.length})`)
+            .addFields(
+              { name: 'Profession', value: r.profession_name || 'Unknown', inline: true },
+              { name: 'Skill Tier', value: r.skill_tier_name || 'Unknown', inline: true },
+              { name: 'Recipe ID', value: String(r.recipe_id), inline: true },
+              { name: 'Item ID', value: r.item_id ? String(r.item_id) : 'Unknown', inline: true }
+            );
+          debug.log({ embeds: [embed] });
+          interaction.editReply({ embeds: [embed] });
+        }
+      );
+      return;
+    }
+
+    // No parameters provided
+    return interaction.editReply('Please provide either an `id` or a `name` to search for (e.g. `/recipes id:123` or `/recipes name:Iron`)');
   }
 };
