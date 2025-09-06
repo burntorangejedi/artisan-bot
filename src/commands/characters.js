@@ -16,7 +16,16 @@ async function removeOldProfessionRoles(guild, member) {
     for (const prof of ALL_PROFESSIONS) {
         const role = guild.roles.cache.find(r => r.name.toLowerCase() === prof.toLowerCase());
         if (role && member.roles.cache.has(role.id)) {
-            try { await member.roles.remove(role); } catch (e) { }
+            // Ensure the bot can actually manage this role before attempting remove
+            try {
+                const botMember = guild.members.me;
+                if (!botMember || (botMember.permissions && botMember.permissions.has && botMember.permissions.has('ManageRoles')) ) {
+                    // also ensure bot's highest role is above the target role
+                    if (!botMember || botMember.roles.highest.position > role.position) {
+                        await member.roles.remove(role);
+                    }
+                }
+            } catch (e) { }
         }
     }
 }
@@ -27,13 +36,29 @@ async function removeOldSpecClassAndMainRoles(guild, member) {
     for (const roleName of MAIN_ROLES) {
         const role = guild.roles.cache.find(r => r.name.toLowerCase() === roleName.toLowerCase());
         if (role && member.roles.cache.has(role.id)) {
-            try { await member.roles.remove(role); } catch (e) { }
+            try {
+                const botMember = guild.members.me;
+                if (!botMember || (botMember.permissions && botMember.permissions.has && botMember.permissions.has('ManageRoles'))) {
+                    if (!botMember || botMember.roles.highest.position > role.position) {
+                        await member.roles.remove(role);
+                    }
+                }
+            } catch (e) { }
         }
     }
-    // Remove all roles that look like "Spec Class" (e.g., "Frost Mage")
-    for (const role of guild.roles.cache.values()) {
-        if (/^[A-Za-z ]+ [A-Za-z]+$/.test(role.name) && member.roles.cache.has(role.id)) {
-            try { await member.roles.remove(role); } catch (e) { }
+    // Remove all known Spec+Class roles defined in SPEC_ROLE_MAP (safe - only known managed roles)
+    for (const key of Object.keys(SPEC_ROLE_MAP)) {
+        const roleName = key.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        const role = guild.roles.cache.find(r => r.name.toLowerCase() === roleName.toLowerCase());
+        if (role && member.roles.cache.has(role.id)) {
+            try {
+                const botMember = guild.members.me;
+                if (!botMember || (botMember.permissions && botMember.permissions.has && botMember.permissions.has('ManageRoles'))) {
+                    if (!botMember || botMember.roles.highest.position > role.position) {
+                        await member.roles.remove(role);
+                    }
+                }
+            } catch (e) { }
         }
     }
 }
