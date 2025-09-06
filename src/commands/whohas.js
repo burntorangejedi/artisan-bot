@@ -1,21 +1,11 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../data/platform/sqlite/db_sqlite');
+const debug = require('../data/debug');
+const { safeEditReply } = require('../utils/interaction');
+const { paginateTable, componentsFor } = require('../utils/pagination');
 
 
 const settings = require('../settings');
-
-
-function paginateTable(header, lines, pageSize) {
-  const pages = [];
-  for (let i = 0; i < lines.length; i += pageSize) {
-    const pageLines = lines.slice(i, i + pageSize);
-  // Put the header and the rows together, then wrap the whole block in a code fence
-  const body = [header, ...pageLines].join('\n');
-  const page = '```' + body + '```';
-    pages.push(page);
-  }
-  return pages;
-}
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('whohas')
@@ -26,6 +16,7 @@ module.exports = {
         .setRequired(true)
     ),
   async execute(interaction) {
+  try { await interaction.deferReply(); } catch (e) { }
     const recipeInput = interaction.options.getString('recipe');
     const isItemId = /^\d+$/.test(recipeInput.trim());
     const searchFn = isItemId ? db.searchCraftersByItemId : db.searchCraftersByRecipeName;
@@ -44,11 +35,7 @@ module.exports = {
         const msg = searchType === 'Item ID'
           ? `No guild member can craft a recipe with Item ID "${recipeInput}".`
           : `No guild member can craft a recipe matching "${recipeInput}".`;
-        if (!interaction.replied && !interaction.deferred) {
-          await interaction.reply(msg);
-        } else {
-          await interaction.followUp(msg);
-        }
+        try { return await interaction.editReply(msg); } catch (err) { debug.error('whohas reply failed:', err); try { return await interaction.followUp(msg); } catch (e) { return; } }
         return;
       }
 
@@ -89,8 +76,8 @@ module.exports = {
         return discordNames;
       }
 
-  // Use embed helper
-  const { buildWhohasEmbedPage } = require('../embeds/whohasEmbed');
+      // Use embed helper
+      const { buildWhohasEmbedPage } = require('../embeds/whohasEmbed');
 
       const discordNames = await resolveDiscordNames(rows);
       const results = rows.map(row => ({
@@ -102,38 +89,19 @@ module.exports = {
       const outputStyle = (settings.WHOHAS_OUTPUT_STYLE || 'table').toLowerCase();
 
       let pageIdx = 0;
-      const PAGE_SIZE = parseInt(settings.WHOHAS_PAGE_SIZE || '10', 10) || 10;
+  const PAGE_SIZE = parseInt(settings.WHOHAS_PAGE_SIZE || '10', 10) || 10;
       const totalPages = Math.ceil(results.length / PAGE_SIZE);
 
       // Prepare common components (Previous / Next)
-      const componentsFor = (disabledPrev, disabledNext) => [
-        {
-          type: 1,
-          components: [
-            {
-              type: 2,
-              style: 1,
-              label: 'Previous',
-              custom_id: 'whohas_prev',
-              disabled: disabledPrev
-            },
-            {
-              type: 2,
-              style: 1,
-              label: 'Next',
-              custom_id: 'whohas_next',
-              disabled: disabledNext
-            }
-          ]
-        }
-      ];
+  // componentsFor is imported from utils/pagination and will use prefix 'whohas'
 
       if (outputStyle === 'embed') {
-        // Existing embed flow
-        await interaction.reply({
+        // Existing embed flow — use safeEditReply because we deferred earlier
+        const replyRes = await safeEditReply(interaction, {
           embeds: [buildWhohasEmbedPage({ results, pageIdx, searchType, recipeInput })],
-          components: totalPages > 1 ? componentsFor(true, totalPages <= 1) : []
+          components: totalPages > 1 ? componentsFor('whohas', true, totalPages <= 1) : []
         });
+        // replyRes may be the message object (from editReply) or undefined; fetchReply is a reliable way
         const replyMsg = await interaction.fetchReply();
 
         if (totalPages > 1) {
@@ -143,16 +111,16 @@ module.exports = {
           collector.on('collect', async i => {
             if (i.customId === 'whohas_next' && pageIdx < totalPages - 1) pageIdx++;
             else if (i.customId === 'whohas_prev' && pageIdx > 0) pageIdx--;
-            await i.update({
+            await require('../utils/interaction').safeComponentUpdate(i, replyMsg, {
               embeds: [buildWhohasEmbedPage({ results, pageIdx, searchType, recipeInput })],
-              components: componentsFor(pageIdx === 0, pageIdx === totalPages - 1)
+              components: componentsFor('whohas', pageIdx === 0, pageIdx === totalPages - 1)
             });
           });
 
           collector.on('end', async () => {
             try {
               await replyMsg.edit({ embeds: [buildWhohasEmbedPage({ results, pageIdx, searchType, recipeInput })], components: [] });
-            } catch {}
+            } catch { }
           });
         }
       } else {
@@ -178,15 +146,15 @@ module.exports = {
         const lines = results.map(r => {
           const charName = (r.member || '-').padEnd(COL.char).slice(0, COL.char);
           const prof = (r.profession || '-').padEnd(COL.prof).slice(0, COL.prof);
-          const skill = (r.max_skill_level ? String(r.max_skill_level) : '-').padEnd(COL.skill).slice(0,COL.skill);
-          const discord = (r.discordName || '-').padEnd(COL.discord).slice(0,COL.discord);
-          const recipe = (r.recipe_name || '-').padEnd(COL.recipe).slice(0,COL.recipe);
+          const skill = (r.max_skill_level ? String(r.max_skill_level) : '-').padEnd(COL.skill).slice(0, COL.skill);
+          const discord = (r.discordName || '-').padEnd(COL.discord).slice(0, COL.discord);
+          const recipe = (r.recipe_name || '-').padEnd(COL.recipe).slice(0, COL.recipe);
           return `${charName} | ${prof} | ${skill} | ${discord} | ${recipe}`;
         });
         const pages = paginateTable(header, lines, PAGE_SIZE);
 
-        await interaction.reply({ content: pages[pageIdx], components: totalPages > 1 ? componentsFor(true, totalPages <= 1) : [] });
-        const replyMsg = await interaction.fetchReply();
+  try { await interaction.editReply({ content: pages[pageIdx], components: totalPages > 1 ? componentsFor('whohas', true, totalPages <= 1) : [] }); } catch (err) { debug.error('whohas initial editReply failed:', err); try { await interaction.followUp({ content: pages[pageIdx], components: totalPages > 1 ? componentsFor('whohas', true, totalPages <= 1) : [] }); } catch (e) { } }
+  const replyMsg = await interaction.fetchReply();
 
         if (totalPages > 1) {
           const filter = i => i.user.id === interaction.user.id && (i.customId === 'whohas_next' || i.customId === 'whohas_prev');
@@ -195,23 +163,21 @@ module.exports = {
           collector.on('collect', async i => {
             if (i.customId === 'whohas_next' && pageIdx < totalPages - 1) pageIdx++;
             else if (i.customId === 'whohas_prev' && pageIdx > 0) pageIdx--;
-            await i.update({ content: pages[pageIdx], components: componentsFor(pageIdx === 0, pageIdx === totalPages - 1) });
+            await require('../utils/interaction').safeComponentUpdate(i, replyMsg, { content: pages[pageIdx], components: componentsFor('whohas', pageIdx === 0, pageIdx === totalPages - 1) });
           });
 
           collector.on('end', async () => {
             try {
               await replyMsg.edit({ content: pages[pageIdx], components: [] });
-            } catch {}
+            } catch { }
           });
         }
       }
     } catch (err) {
-      console.error('Unhandled error in /whohas:', err);
-      if (!interaction.replied && !interaction.deferred) {
-        return interaction.reply('An unexpected error occurred while searching for crafters.');
-      } else {
-        return interaction.followUp('An unexpected error occurred while searching for crafters.');
-      }
+      debug.error('Unhandled error in /whohas:', err);
+      return await safeEditReply(interaction, 'An unexpected error occurred while searching for crafters.');
     }
   }
 };
+
+// (safeEditReply provided by src/utils/interaction.js)

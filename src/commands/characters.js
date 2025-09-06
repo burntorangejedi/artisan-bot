@@ -159,6 +159,8 @@ module.exports = {
         const member = await guild.members.fetch(discordId);
 
         if (subcommand === 'claim') {
+            // Interaction may take time (DB updates) — defer the reply
+            try { await interaction.deferReply(); } catch (e) { }
             const character = interaction.options.getString('character');
             let isMain = interaction.options.getBoolean('ismain');
 
@@ -172,10 +174,10 @@ module.exports = {
                 // Get the character row
                 const charRow = await db.getCharacterRowByName(character);
                 if (!charRow) {
-                    return interaction.reply('Character not found in the guild database.');
+                    try { return await interaction.editReply('Character not found in the guild database.'); } catch (e) { try { return await interaction.followUp('Character not found in the guild database.'); } catch (_) { return; } }
                 }
                 if (charRow.discord_id && charRow.discord_id !== discordId) {
-                    return interaction.reply('Character already claimed by another user.');
+                    try { return await interaction.editReply('Character already claimed by another user.'); } catch (e) { try { return await interaction.followUp('Character already claimed by another user.'); } catch (_) { return; } }
                 }
 
                 // Claim the character
@@ -188,75 +190,93 @@ module.exports = {
                     await assignAllMainRoles(guild, member, character);
                     msg += ` Set as your main. Roles updated.`;
                 }
-                return interaction.reply(msg);
+                try { return await interaction.editReply(msg); } catch (e) { try { return await interaction.followUp(msg); } catch (_) { return; } }
             } catch (err) {
-                console.error(err);
-                return interaction.reply('Database error.');
+                const debug = require('../data/debug');
+                debug.error(err);
+                try { return await interaction.editReply('Database error.'); } catch (e) { try { return await interaction.followUp('Database error.'); } catch (_) { return; } }
             }
         }
 
         else if (subcommand === 'unclaim') {
+            try { await interaction.deferReply(); } catch (e) { }
             const character = interaction.options.getString('character');
             try {
                 const row = await db.getCharacterRowForUnclaim(character);
                 if (!row || row.discord_id !== discordId) {
-                    return interaction.reply('You must claim this character first.');
+                    try { return await interaction.editReply('You must claim this character first.'); } catch (e) { try { return await interaction.followUp('You must claim this character first.'); } catch (_) { return; } }
                 }
                 // If this was your main, unset is_main and remove roles
                 if (row.is_main) {
                     await removeAllRelevantRoles(guild, member);
                 }
                 await db.unclaimCharacter(row.id);
-                return interaction.reply(`✅ ${character} has been unclaimed.`);
+                try { return await interaction.editReply(`✅ ${character} has been unclaimed.`); } catch (e) { try { return await interaction.followUp(`✅ ${character} has been unclaimed.`); } catch (_) { return; } }
             } catch (err) {
-                console.error(err);
-                return interaction.reply('Database error.');
+                const debug = require('../data/debug');
+                debug.error(err);
+                try { return await interaction.editReply('Database error.'); } catch (e) { try { return await interaction.followUp('Database error.'); } catch (_) { return; } }
             }
         }
 
         else if (subcommand === 'list') {
             try {
+                await interaction.deferReply();
                 const rows = await db.listClaimedCharacters(discordId);
                 if (!rows.length) {
-                    return interaction.reply('You have not claimed any characters.');
+                    try { return await interaction.editReply('You have not claimed any characters.'); } catch (e) { try { return await interaction.followUp('You have not claimed any characters.'); } catch (_) { return; } }
                 }
-                // Set column widths to match the header
-                const header = `Character           | Class         | Spec           | Role          | Main`;
-                const separator = `--------------------|---------------|----------------|---------------|------`;
+                // Use explicit column widths and consistent separators
+                const COL = { name: 20, class: 14, spec: 15, role: 14, main: 4 };
+                const hdr = [
+                    'Character'.padEnd(COL.name),
+                    'Class'.padEnd(COL.class),
+                    'Spec'.padEnd(COL.spec),
+                    'Role'.padEnd(COL.role),
+                    'Main'.padEnd(COL.main)
+                ].join(' | ');
+                const sep = [
+                    '-'.repeat(COL.name),
+                    '-'.repeat(COL.class),
+                    '-'.repeat(COL.spec),
+                    '-'.repeat(COL.role),
+                    '-'.repeat(COL.main)
+                ].join('-+-');
                 const lines = rows.map(row => {
-                    const roleName = (row.class && row.spec)
-                        ? getMainRoleForSpecClass(row.spec, row.class)
-                        : '-';
-                    return (
-                        `${row.name.padEnd(20)}| ` +
-                        `${String(row.class ?? '-').padEnd(14)}| ` +
-                        `${String(row.spec ?? '-').padEnd(15)}| ` +
-                        `${String(roleName ?? '-').padEnd(14)}| ` +
-                        `${row.is_main ? 'YES' : ''}`
-                    );
+                    const roleName = (row.class && row.spec) ? getMainRoleForSpecClass(row.spec, row.class) : '-';
+                    return [
+                        String(row.name).padEnd(COL.name),
+                        String(row.class ?? '-').padEnd(COL.class),
+                        String(row.spec ?? '-').padEnd(COL.spec),
+                        String(roleName ?? '-').padEnd(COL.role),
+                        (row.is_main ? 'YES' : '').padEnd(COL.main)
+                    ].join(' | ');
                 });
-                const table = [header, separator, ...lines].join('\n');
-                interaction.reply(`\`\`\`${table}\`\`\``);
+                const table = [hdr, sep, ...lines].join('\n');
+                try { return await interaction.editReply(`\`\`\`${table}\`\`\``); } catch (e) { try { return await interaction.followUp(`\`\`\`${table}\`\`\``); } catch (_) { return; } }
             } catch (err) {
-                console.error(err);
-                return interaction.reply('Database error.');
+                const debug = require('../data/debug');
+                debug.error(err);
+                try { return await interaction.editReply('Database error.'); } catch (e) { try { return await interaction.followUp('Database error.'); } catch (_) { return; } }
             }
         }
 
         else if (subcommand === 'setmain') {
+            try { await interaction.deferReply(); } catch (e) { }
             const character = interaction.options.getString('character');
             try {
                 const row = await db.getCharacterRowByName(character);
                 if (!row || row.discord_id !== discordId) {
-                    return interaction.reply('You must claim this character first.');
+                    try { return await interaction.editReply('You must claim this character first.'); } catch (e) { try { return await interaction.followUp('You must claim this character first.'); } catch (_) { return; } }
                 }
                 await db.unsetMainForUser(discordId);
                 await db.setMainCharacter(row.id);
                 await assignAllMainRoles(guild, member, character);
-                return interaction.reply(`${character} is now your main. Roles updated.`);
+                try { return await interaction.editReply(`${character} is now your main. Roles updated.`); } catch (e) { try { return await interaction.followUp(`${character} is now your main. Roles updated.`); } catch (_) { return; } }
             } catch (err) {
-                console.error(err);
-                return interaction.reply('Database error.');
+                const debug = require('../data/debug');
+                debug.error(err);
+                try { return await interaction.editReply('Database error.'); } catch (e) { try { return await interaction.followUp('Database error.'); } catch (_) { return; } }
             }
         }
 
@@ -273,7 +293,8 @@ module.exports = {
                 [`%${focused}%`],
                 (err, rows) => {
                     if (err) {
-                        console.error(err);
+                        const debug = require('../data/debug');
+                        debug.error(err);
                         return interaction.respond([]);
                     }
                     const choices = rows.map(row => ({
@@ -292,7 +313,8 @@ module.exports = {
                 [discordId, `%${focused}%`],
                 (err, rows) => {
                     if (err) {
-                        console.error(err);
+                        const debug = require('../data/debug');
+                        debug.error(err);
                         return interaction.respond([]);
                     }
                     const choices = rows.map(row => ({
@@ -322,7 +344,8 @@ function newFunction(discordId, focused, interaction) {
         [discordId, `%${focused}%`],
         (err, rows) => {
             if (err) {
-                console.error(err);
+                const debug = require('../data/debug');
+                debug.error(err);
                 return interaction.respond([]);
             }
             const choices = rows.map(row => ({

@@ -4,6 +4,7 @@ const debug = require('../data/debug');
 const settings = require('../settings');
 const { isBusy, setBusy } = require('../data/botState');
 const { getBlizzardAccessToken, getGuildRoster, getCharacterSummary, getCharacterProfessions } = require('../blizzard/api');
+const { safeEditReply } = require('../utils/interaction');
 
 // WoW class colors (hex)
 const CLASS_COLORS = {
@@ -120,8 +121,13 @@ module.exports = {
                 }));
 
                 let imported = 0;
+                // Totals to report
+                let totals = { addedMembers: 0, updatedMembers: 0, addedRecipes: 0, removedRecipes: 0 };
+                // Send initial reply and capture the message object so we can edit it later without using the interaction callback (avoids token expiry issues)
+                let replyMsg = null;
                 try {
                     await interaction.editReply(`Starting sync of ${members.length} characters. The more characters you have, the longer it can take. Please be patient while we crank through your imense guild..`);
+                    try { replyMsg = await interaction.fetchReply(); } catch (e) { debug.log('fetchReply failed after initial editReply:', e.message || e); replyMsg = null; }
                 } catch (err) {
                     debug.log('editReply failed (likely expired interaction):', err.message || err);
                 }
@@ -130,40 +136,72 @@ module.exports = {
                 const BATCH_SIZE = settings.SYNC_BATCH_SIZE;
                 for (let i = 0; i < members.length; i += BATCH_SIZE) {
                     const batch = members.slice(i, i + BATCH_SIZE);
-                    await Promise.allSettled(batch.map(async (m) => {
+                    const results = await Promise.allSettled(batch.map(async (m) => {
                         const charName = m.character.name;
                         const realmSlug = m.character.realm.slug;
                         // Fetch summary and professions for this character
                         const summary = await getCharacterSummary(realmSlug, charName, accessToken);
                         const professions = await getCharacterProfessions(realmSlug, charName, accessToken);
-                        await db.syncGuildMember({ character: m.character, summary, professions, accessToken });
+                        return await db.syncGuildMember({ character: m.character, summary, professions, accessToken });
                     }));
+                    // Aggregate results
+                    for (const r of results) {
+                        if (r.status === 'fulfilled' && r.value) {
+                            totals.addedMembers += r.value.addedMembers || 0;
+                            totals.updatedMembers += r.value.updatedMembers || 0;
+                            totals.addedRecipes += r.value.addedRecipes || 0;
+                            totals.removedRecipes += r.value.removedRecipes || 0;
+                        } else if (r.status === 'rejected') {
+                            debug.error('Error syncing member in batch:', r.reason);
+                        }
+                    }
                     imported += batch.length;
                     try {
-                        await interaction.editReply(`Syncing... (${imported}/${members.length} characters processed)`);
+                        if (replyMsg) {
+                            await replyMsg.edit(`Syncing... (${imported}/${members.length} characters processed)`);
+                        } else {
+                            await safeEditReply(interaction, `Syncing... (${imported}/${members.length} characters processed)`);
+                        }
                     } catch (err) {
-                        debug.log('editReply failed (likely expired interaction):', err.message || err);
+                        debug.log('progress update failed (likely expired interaction):', err.message || err);
                     }
                 }
 
-                // Delete departed members
-                await db.deleteDepartedMembers(currentNamesRealms);
+                // Delete departed members and capture deletion counts
+                let departedStats = { deletedMembers: 0, deletedCharacterRecipes: 0 };
+                try {
+                    departedStats = await db.deleteDepartedMembers(currentNamesRealms);
+                } catch (e) {
+                    debug.log('Error deleting departed members:', e);
+                }
 
                 // Clean up character_recipes that reference non-existent members or recipes
                 await db.cleanupOrphanedCharacterRecipes();
 
                 debug.log(`admin sync: Command finished! Imported ${imported} members.`);
                 try {
-                    await interaction.editReply(`Guild roster, professions, and recipes synced! ${members.length} members imported.`);
+                    const totalChanges = totals.addedMembers + totals.updatedMembers + totals.addedRecipes + totals.removedRecipes + (departedStats.deletedMembers || 0) + (departedStats.deletedCharacterRecipes || 0);
+                    const finalMsg = `Guild roster sync complete!
+Members processed: ${members.length}
+Member additions: ${totals.addedMembers}
+Member updates: ${totals.updatedMembers}
+Recipe additions: ${totals.addedRecipes}
+Recipe deletions: ${totals.removedRecipes}
+Departed members removed: ${departedStats.deletedMembers || 0}
+Character-recipe rows removed for departed members: ${departedStats.deletedCharacterRecipes || 0}
+Total changes (approx): ${totalChanges}`;
+                    if (replyMsg) await replyMsg.edit(finalMsg);
+                    else await safeEditReply(interaction, finalMsg);
                 } catch (err) {
-                    debug.log('editReply failed (likely expired interaction):', err.message || err);
+                    debug.log('final edit failed (likely expired interaction):', err.message || err);
                 }
             } catch (err) {
-                console.error('DB error: ', err);
+                debug.error('DB error: ', err);
                 try {
-                    await interaction.editReply('Failed to fetch guild roster or professions from Blizzard API.');
+                    if (replyMsg) await replyMsg.edit('Failed to fetch guild roster or professions from Blizzard API.');
+                    else await safeEditReply(interaction, 'Failed to fetch guild roster or professions from Blizzard API.');
                 } catch (err2) {
-                    debug.log('editReply failed (likely expired interaction):', err2.message || err2);
+                    debug.log('error reporting failed (likely expired interaction):', err2.message || err2);
                 }
             } finally {
                 setBusy(false);

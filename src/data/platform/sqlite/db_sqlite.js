@@ -16,7 +16,7 @@ const { getBlizzardAccessToken, getProfessionsIndex, getSkillTiersForProfession,
 const sqlite3 = require('sqlite3').verbose();
 const dbPath = path.resolve(__dirname, '../../../../guilddata.sqlite');
 const db = new sqlite3.Database(dbPath);
-console.log('[DB] Using database file:', dbPath);
+debug.log('[DB] Using database file:', dbPath);
 
 // Enable foreign key support
 db.run('PRAGMA foreign_keys = ON;');
@@ -125,13 +125,13 @@ async function getClassAndSpecForCharacter(name) {
  * @returns {Promise<{class: string, spec: string}>}
  */
 async function claimCharacter(discordId, charId) {
-       return new Promise((resolve, reject) => {
-	       db.run(
-		       `UPDATE guild_members SET discord_id = ? WHERE id = ?`,
-		       [discordId, charId],
-		       err => err ? reject(err) : resolve()
-	       );
-       });
+	return new Promise((resolve, reject) => {
+		db.run(
+			`UPDATE guild_members SET discord_id = ? WHERE id = ?`,
+			[discordId, charId],
+			err => err ? reject(err) : resolve()
+		);
+	});
 }
 
 /**
@@ -140,13 +140,13 @@ async function claimCharacter(discordId, charId) {
  * @returns {Promise<void>}
  */
 async function unsetMainForUser(discordId) {
-       return new Promise((resolve, reject) => {
-	       db.run(
-		       `UPDATE guild_members SET is_main = 0 WHERE discord_id = ?`,
-		       [discordId],
-		       err => err ? reject(err) : resolve()
-	       );
-       });
+	return new Promise((resolve, reject) => {
+		db.run(
+			`UPDATE guild_members SET is_main = 0 WHERE discord_id = ?`,
+			[discordId],
+			err => err ? reject(err) : resolve()
+		);
+	});
 }
 
 /**
@@ -155,13 +155,13 @@ async function unsetMainForUser(discordId) {
  * @returns {Promise<void>}
  */
 async function setMainCharacter(charId) {
-       return new Promise((resolve, reject) => {
-	       db.run(
-		       `UPDATE guild_members SET is_main = 1 WHERE id = ?`,
-		       [charId],
-		       err => err ? reject(err) : resolve()
-	       );
-       });
+	return new Promise((resolve, reject) => {
+		db.run(
+			`UPDATE guild_members SET is_main = 1 WHERE id = ?`,
+			[charId],
+			err => err ? reject(err) : resolve()
+		);
+	});
 }
 
 /**
@@ -172,9 +172,9 @@ async function setMainCharacter(charId) {
 async function getCharacterRowForUnclaim(name) {
 	return new Promise((resolve, reject) => {
 		db.get(
-			 `SELECT id, discord_id, is_main FROM guild_members WHERE name = ? COLLATE NOCASE`,
-			 [name],
-			 (err, row) => err ? reject(err) : resolve(row)
+			`SELECT id, discord_id, is_main FROM guild_members WHERE name = ? COLLATE NOCASE`,
+			[name],
+			(err, row) => err ? reject(err) : resolve(row)
 		);
 	});
 }
@@ -185,13 +185,13 @@ async function getCharacterRowForUnclaim(name) {
  * @returns {Promise<void>}
  */
 async function unclaimCharacter(charId) {
-       return new Promise((resolve, reject) => {
-	       db.run(
-		       `UPDATE guild_members SET discord_id = NULL, is_main = 0 WHERE id = ?`,
-		       [charId],
-		       err => err ? reject(err) : resolve()
-	       );
-       });
+	return new Promise((resolve, reject) => {
+		db.run(
+			`UPDATE guild_members SET discord_id = NULL, is_main = 0 WHERE id = ?`,
+			[charId],
+			err => err ? reject(err) : resolve()
+		);
+	});
 }
 
 /**
@@ -200,13 +200,13 @@ async function unclaimCharacter(charId) {
  * @returns {Promise<Array>}
  */
 async function listClaimedCharacters(discordId) {
-       return new Promise((resolve, reject) => {
-	       db.all(
-		       `SELECT name, class, spec, role, is_main FROM guild_members WHERE discord_id = ? ORDER BY name`,
-		       [discordId],
-		       (err, rows) => err ? reject(err) : resolve(rows)
-	       );
-       });
+	return new Promise((resolve, reject) => {
+		db.all(
+			`SELECT name, class, spec, role, is_main FROM guild_members WHERE discord_id = ? ORDER BY name`,
+			[discordId],
+			(err, rows) => err ? reject(err) : resolve(rows)
+		);
+	});
 }
 
 /**
@@ -281,19 +281,22 @@ async function deleteDepartedMembers(currentNamesRealms) {
 					!currentNamesRealms.some(nr => nr.name === row.name && nr.realm === row.realm)
 				);
 				let pending = toDelete.length;
-				if (pending === 0) return resolve();
+				if (pending === 0) return resolve({ deletedMembers: 0, deletedCharacterRecipes: 0 });
+				let deletedCharacterRecipes = 0;
 				for (const del of toDelete) {
 					db.run(
 						`DELETE FROM character_recipes WHERE member_id = ?`,
 						[del.id],
-						err2 => {
+						function (err2) {
 							if (err2) debug.log(`[DB] Error deleting character_recipes for departed member ${del.name} (${del.realm}):`, err2);
+							const removedForMember = this && this.changes ? this.changes : 0;
+							deletedCharacterRecipes += removedForMember;
 							db.run(
 								`DELETE FROM guild_members WHERE id = ?`,
 								[del.id],
-								err3 => {
+								(err3) => {
 									if (err3) debug.log(`[DB] Error deleting departed member ${del.name} (${del.realm}):`, err3);
-									if (--pending === 0) resolve();
+									if (--pending === 0) resolve({ deletedMembers: toDelete.length, deletedCharacterRecipes });
 								}
 							);
 						}
@@ -336,14 +339,24 @@ async function syncGuildMember({ character, summary, professions, accessToken })
 	let charClass = summary && summary.character_class ? summary.character_class.name : null;
 	let charSpec = summary && summary.active_spec ? summary.active_spec.name : null;
 	let charRole = null;
+	// Counters for this member
+	let addedMembers = 0;
+	let updatedMembers = 0;
+	let addedRecipes = 0;
+	let removedRecipes = 0;
+
 	// Upsert member
-	const memberId = await upsertGuildMember({
+	const memberResult = await upsertGuildMember({
 		name: charName,
 		realm: realmSlug,
 		charClass,
 		charSpec,
 		charRole
 	});
+	const memberId = memberResult.id;
+	if (memberResult.created) addedMembers++;
+	if (memberResult.updated) updatedMembers++;
+
 	// Upsert professions/recipes
 	const allProfs = [];
 	if (professions && professions.primaries) allProfs.push(...professions.primaries);
@@ -377,21 +390,26 @@ async function syncGuildMember({ character, summary, professions, accessToken })
 		}
 		const validRecipeIds = validRecipeRows.map(r => r.id);
 		// Remove any character_recipes for this member/profession that are no longer known
-		await new Promise((resolve, reject) => {
+		const removedForThisProf = await new Promise((resolve, reject) => {
 			db.run(
 				`DELETE FROM character_recipes WHERE member_id = ? AND profession_id = ? AND recipe_id NOT IN (${validRecipeIds.length ? validRecipeIds.map(() => '?').join(',') : 'NULL'})`,
 				[memberId, professionId, ...validRecipeIds],
-				err => {
+				function (err) {
 					if (err) debug.log(`Error cleaning up old character_recipes for ${charName} (${professionName}):`, err);
-					resolve();
+					const removed = this && this.changes ? this.changes : 0;
+					resolve(removed);
 				}
 			);
 		});
+		removedRecipes += removedForThisProf;
 		// Insert or update character_recipes for all valid known recipes
 		for (const recipeId of validRecipeIds) {
-			await upsertCharacterRecipe(memberId, professionId, recipeId);
+			const res = await upsertCharacterRecipe(memberId, professionId, recipeId);
+			if (res && res.inserted) addedRecipes++;
 		}
 	}
+
+	return { addedMembers, updatedMembers, addedRecipes, removedRecipes };
 }
 
 // --- Helper functions used by syncGuildMember ---
@@ -409,12 +427,14 @@ async function upsertGuildMember({ name, realm, charClass, charSpec, charRole })
 					db.run(
 						`UPDATE guild_members SET class = ?, spec = ?, role = ? WHERE id = ?`,
 						[charClass, charSpec, charRole, row.id],
-						err2 => {
+						function (err2) {
 							if (err2) {
 								debug.log('[DB] upsertGuildMember UPDATE error:', { err2, name, realm, row });
 								return reject(err2);
 							}
-							resolve(row.id);
+							// this.changes may be 0 if no actual change
+							const updated = this && this.changes && this.changes > 0;
+							resolve({ id: row.id, created: false, updated });
 						}
 					);
 				} else {
@@ -426,7 +446,7 @@ async function upsertGuildMember({ name, realm, charClass, charSpec, charRole })
 								debug.log('[DB] upsertGuildMember INSERT error:', { err2, name, realm });
 								return reject(err2);
 							}
-							resolve(this.lastID);
+							resolve({ id: this.lastID, created: true, updated: false });
 						}
 					);
 				}
@@ -459,7 +479,8 @@ async function upsertCharacterRecipe(memberId, professionId, recipeId) {
 					debug.log('[DB] upsertCharacterRecipe INSERT error:', { err, memberId, professionId, recipeId });
 					return reject(err);
 				}
-				resolve(this.lastID);
+				const inserted = this && this.changes && this.changes > 0;
+				resolve({ inserted, lastID: this.lastID });
 			}
 		);
 	});
@@ -635,6 +656,70 @@ function searchCraftersByItemId(itemId, callback) {
 	);
 }
 
+/**
+ * Get characters that have a given profession (based on character_recipes)
+ * @param {string} profession
+ * @param {function} callback
+ */
+function getCharactersByProfession(profession, callback) {
+	db.all(
+		`SELECT DISTINCT gm.name, gm.class, gm.spec, gm.role, gm.discord_id
+		 FROM character_recipes cr
+		 JOIN professions p ON cr.profession_id = p.id
+		 JOIN guild_members gm ON cr.member_id = gm.id
+		 WHERE p.name = ? COLLATE NOCASE
+		 ORDER BY gm.name`,
+		[profession],
+		callback
+	);
+}
+
+/**
+ * Get characters by main role (Tank/Healer/etc)
+ * @param {string} role
+ * @param {function} callback
+ */
+function getCharactersByRole(role, callback) {
+	db.all(
+		`SELECT name, class, spec, role, discord_id FROM guild_members WHERE role = ? COLLATE NOCASE ORDER BY name`,
+		[role],
+		callback
+	);
+}
+
+/**
+ * Get characters by class name
+ * @param {string} clazz
+ * @param {function} callback
+ */
+function getCharactersByClass(clazz, callback) {
+	db.all(
+		`SELECT name, class, spec, role, discord_id FROM guild_members WHERE class = ? COLLATE NOCASE ORDER BY name`,
+		[clazz],
+		callback
+	);
+}
+
+/**
+ * Get claimed characters; if mainsOnly is true, return only is_main = 1
+ * @param {boolean} mainsOnly
+ * @param {function} callback
+ */
+function getClaimedCharacters(mainsOnly, callback) {
+	const sql = mainsOnly
+		? `SELECT name, class, spec, is_main, discord_id FROM guild_members WHERE is_main = 1 AND discord_id IS NOT NULL ORDER BY name`
+		: `SELECT name, class, spec, is_main, discord_id FROM guild_members WHERE discord_id IS NOT NULL ORDER BY name`;
+	db.all(sql, [], callback);
+}
+
+/**
+ * Get unclaimed characters
+ * @param {function} callback
+ */
+function getUnclaimedCharacters(callback) {
+	db.all(`SELECT name, class, spec FROM guild_members WHERE discord_id IS NULL ORDER BY name`, [], callback);
+}
+
 // =============================
 // Module Exports
 // =============================
@@ -646,16 +731,22 @@ module.exports = {
 	serialize: (fn) => db.serialize(fn),
 	searchCraftersByRecipeName,
 	searchCraftersByItemId,
-		// High-level character helpers
-		getClaimedCharacterCount,
-		getCharacterRowByName,
-		claimCharacter,
-		unsetMainForUser,
-		setMainCharacter,
-		getCharacterRowForUnclaim,
-		unclaimCharacter,
-		listClaimedCharacters,
-		getProfessionsForCharacter,
+	// High-level character helpers
+	getClaimedCharacterCount,
+	getCharacterRowByName,
+	claimCharacter,
+	unsetMainForUser,
+	setMainCharacter,
+	getCharacterRowForUnclaim,
+	unclaimCharacter,
+	listClaimedCharacters,
+	getProfessionsForCharacter,
+	// Guild listing helpers
+	getCharactersByProfession,
+	getCharactersByRole,
+	getCharactersByClass,
+	getClaimedCharacters,
+	getUnclaimedCharacters,
 	// High-level sync helpers
 	deleteDepartedMembers,
 	cleanupOrphanedCharacterRecipes,

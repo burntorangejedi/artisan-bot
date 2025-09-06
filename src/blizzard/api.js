@@ -114,7 +114,7 @@ async function getCharacterSummary(realmSlug, charName, token) {
     });
     return response.data;
   } catch (err) {
-    console.error(`Failed summary fetch for ${charName}: ${err.response ? err.response.status : err.message}`);
+  debug.error(`Failed summary fetch for ${charName}: ${err.response ? err.response.status : err.message}`);
     return null;
   }
 }
@@ -130,7 +130,7 @@ async function getCharacterSpecialization(realmSlug, charName, token) {
     });
     return response.data;
   } catch (err) {
-    console.error(`Failed specialization fetch for ${charName}: ${err.response ? err.response.status : err.message}`);
+  debug.error(`Failed specialization fetch for ${charName}: ${err.response ? err.response.status : err.message}`);
     return null;
   }
 }

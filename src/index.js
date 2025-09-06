@@ -20,6 +20,24 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.GuildMember]
 });
 
+// Global handlers to prevent the process from exiting on DiscordAPIError or other async errors
+process.on('unhandledRejection', (reason, promise) => {
+  try {
+    debug.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  } catch (e) {
+    // fallback
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  }
+});
+
+process.on('uncaughtException', (err) => {
+  try {
+    debug.error('Uncaught Exception:', err && err.stack ? err.stack : err);
+  } catch (e) {
+    console.error('Uncaught Exception:', err && err.stack ? err.stack : err);
+  }
+});
+
 client.commands = new Collection();
 
 // Load commands
@@ -34,7 +52,8 @@ for (const file of commandFiles) {
     if (debug && typeof debug.warn === 'function') {
       debug.warn(`Skipping invalid or empty command file: ${file}`);
     } else {
-      console.warn(`Skipping invalid or empty command file: ${file}`);
+      // debug.warn exists; use it for consistency
+      debug.warn(`Skipping invalid or empty command file: ${file}`);
     }
     continue;
   }
@@ -52,12 +71,12 @@ async function registerCommands() {
     );
     debug.log('Successfully reloaded application (/) commands.');
   } catch (error) {
-    console.error(error);
+    debug.error(error);
   }
 }
 
 client.once('ready', () => {
-  console.log(`Logged in as ${client.user.tag}!`);
+  debug.log(`Logged in as ${client.user.tag}!`);
 });
 
 client.on('interactionCreate', async interaction => {
@@ -68,7 +87,7 @@ client.on('interactionCreate', async interaction => {
       try {
         await command.autocomplete(interaction);
       } catch (err) {
-        console.error('Autocomplete error:', err);
+        debug.error('Autocomplete error:', err);
       }
     }
     return;
@@ -80,7 +99,7 @@ client.on('interactionCreate', async interaction => {
   try {
     await command.execute(interaction);
   } catch (error) {
-    console.error(error);
+    debug.error(error);
     await interaction.reply({ content: 'There was an error executing that command!', flags: 64 });
   }
 });
