@@ -1,11 +1,21 @@
 
 
-// DEBUG_LEVEL: 'none', 'debug', or 'verbose'
+// DEBUG_LEVEL enum: use one of DEBUG_LEVELS.NONE, DEBUG_LEVELS.LOG, DEBUG_LEVELS.VERBOSE
 const settings = require('../settings');
-const DEBUG_LEVEL = settings.DEBUG_LEVEL;
+const DEBUG_LEVELS = Object.freeze({
+  NONE: 'none',
+  LOG: 'log',
+  VERBOSE: 'verbose'
+});
+
+// Read current debug level dynamically so changes to env or settings during development are reflected
+function getDebugLevel() {
+  return (settings.DEBUG_LEVEL || DEBUG_LEVELS.NONE).toLowerCase();
+}
 
 function log(...args) {
-  if (DEBUG_LEVEL === 'log') {
+  const DEBUG_LEVEL = getDebugLevel();
+  if (DEBUG_LEVEL === DEBUG_LEVELS.LOG || DEBUG_LEVEL === DEBUG_LEVELS.VERBOSE) {
     const formatted = args.map(arg =>
       typeof arg === 'object'
         ? JSON.stringify(arg, null, 2)
@@ -16,7 +26,8 @@ function log(...args) {
 }
 
 function verbose(...args) {
-  if (DEBUG_LEVEL === 'log' || DEBUG_LEVEL === 'verbose') {
+  const DEBUG_LEVEL = getDebugLevel();
+  if (DEBUG_LEVEL === DEBUG_LEVELS.VERBOSE) {
     const formatted = args.map(arg =>
       typeof arg === 'object'
         ? JSON.stringify(arg, null, 2)
@@ -27,7 +38,8 @@ function verbose(...args) {
 }
 
 function error(...args) {
-  if (DEBUG_LEVEL === 'log' || DEBUG_LEVEL === 'verbose') {
+  const DEBUG_LEVEL = getDebugLevel();
+  if (DEBUG_LEVEL === DEBUG_LEVELS.LOG || DEBUG_LEVEL === DEBUG_LEVELS.VERBOSE) {
     const formatted = args.map(arg =>
       typeof arg === 'object'
         ? JSON.stringify(arg, null, 2)
@@ -47,8 +59,14 @@ function warn(...args) {
 }
 
 module.exports = {
-  isDebug: () => DEBUG_LEVEL === 'debug' || DEBUG_LEVEL === 'verbose',
-  isVerbose: () => DEBUG_LEVEL === 'verbose',
+  DEBUG_LEVELS,
+  // helpers that read the current level dynamically
+  isDebug: () => {
+    const level = getDebugLevel();
+    return level === DEBUG_LEVELS.LOG || level === DEBUG_LEVELS.VERBOSE;
+  },
+  isVerbose: () => getDebugLevel() === DEBUG_LEVELS.VERBOSE,
+  getDebugLevel,
   log: log,
   verbose: verbose,
   error: error,

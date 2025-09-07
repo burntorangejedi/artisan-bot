@@ -10,6 +10,13 @@ const DISCORD_TOKEN = settings.DISCORD_TOKEN;
 const CLIENT_ID = settings.CLIENT_ID;
 const GUILD_ID = settings.GUILD_ID;
 
+console.log('Using settings:', {
+  GUILD_NAME: settings.GUILD_NAME,
+  REGION: settings.REGION,  
+  DEBUG_LEVEL: settings.DEBUG_LEVEL,
+  DB_BACKEND: settings.DB_BACKEND
+});
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,

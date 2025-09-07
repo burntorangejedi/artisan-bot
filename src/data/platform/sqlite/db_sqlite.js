@@ -6,6 +6,7 @@
 const debug = require('../../debug');
 const path = require('path');
 const { getBlizzardAccessToken, getProfessionsIndex, getSkillTiersForProfession, getRecipesForSkillTier } = require('../../../blizzard/api');
+const roles = require('../../../constants/roles');
 
 
 // =============================
@@ -339,6 +340,15 @@ async function syncGuildMember({ character, summary, professions, accessToken })
 	let charClass = summary && summary.character_class ? summary.character_class.name : null;
 	let charSpec = summary && summary.active_spec ? summary.active_spec.name : null;
 	let charRole = null;
+	// Derive the main role (Tank/Healer/Ranged DPS/Melee DPS) from spec+class when available
+	try {
+		if (charSpec && charClass) {
+			charRole = roles.getMainRoleForSpecClass(charSpec, charClass) || null;
+		}
+	} catch (e) {
+		// keep null on error but log for visibility
+		debug.log('[DB] Failed to derive charRole for', { charSpec, charClass, err: e && e.stack ? e.stack : e });
+	}
 	// Counters for this member
 	let addedMembers = 0;
 	let updatedMembers = 0;
@@ -680,10 +690,32 @@ function getCharactersByProfession(profession, callback) {
  * @param {function} callback
  */
 function getCharactersByRole(role, callback) {
+	// First try exact match on stored role. If no rows (legacy data), fall back to deriving main role from spec+class.
 	db.all(
 		`SELECT name, class, spec, role, discord_id FROM guild_members WHERE role = ? COLLATE NOCASE ORDER BY name`,
 		[role],
-		callback
+		(err, rows) => {
+			if (err) return callback(err);
+			if (rows && rows.length) return callback(null, rows);
+			// Fallback: load all members and filter by derived main role (handles legacy rows with NULL role)
+			db.all(`SELECT name, class, spec, role, discord_id FROM guild_members`, [], (err2, allRows) => {
+				if (err2) return callback(err2);
+				const desired = String(role || '').toLowerCase();
+				const filtered = (allRows || []).filter(r => {
+					try {
+						const derived = roles.getMainRoleForSpecClass(r.spec || '', r.class || '') || null;
+						if (r.role && String(r.role).toLowerCase() === desired) return true;
+						if (derived && String(derived).toLowerCase() === desired) return true;
+						return false;
+					} catch (e) {
+						return false;
+					}
+				});
+				// sort by name
+				filtered.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+				return callback(null, filtered);
+			});
+		}
 	);
 }
 
