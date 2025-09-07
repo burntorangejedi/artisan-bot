@@ -60,7 +60,6 @@ You can configure the bot using a `.env` file in the project root. Key variables
 - `DEBUG_LEVEL` — Set to `info`, `verbose`, or `error` for logging detail
 - `SYNC_BATCH_SIZE` — Number of characters to process in parallel during sync (default: 5)
 - `WHO_HAS_PAGE_SIZE` — Number of results per page for `/whohas` (default: 10)
-- `WHOHAS_OUTPUT_STYLE` — Set to `table` (default) or `embed` for `/whohas` output style
 - `DISCORD_LIMIT` — Max message length for table output (default: 100)
 ## 🆘 Commands Overview
 
@@ -69,6 +68,35 @@ You can configure the bot using a `.env` file in the project root. Key variables
 **/admin sync** — Admin: Sync or refresh guild data from Blizzard API (updates roster, professions, and recipes)
 
 **/whohas <item/recipe>** — Find out who can craft a specific recipe or item (supports pagination with Next/Previous buttons)
+
+**/guild** — Guild-wide listing helpers (autocomplete + pagination):
+   • `/guild profession <profession>` — List characters with the specified profession (autocomplete supported)
+   • `/guild role <role>` — List characters by main role (Tank / Healer / Melee DPS / Ranged DPS) (autocomplete supported)
+   • `/guild class <class>` — List characters of a given class (autocomplete supported)
+   • `/guild claimed [mains_only]` — List claimed characters and owner (optional boolean `mains_only` to show mains only)
+   • `/guild unclaimed` — List unclaimed characters (class & spec shown)
+
+  Notes:
+   - Long lists are paginated and include Next / Previous buttons.
+   - Each page shows a "Found N..." line inside the code block so the total number of matching characters is visible.
+   - Autocomplete is available for profession, role, and class where noted.
+
+**Interaction behavior and resiliency**
+
+- The bot defers replies for longer queries and uses safe reply/update helpers so that if the original interaction expires the bot will fall back to sending a follow-up message instead of throwing errors. This reduces duplicate-respond and expired-interaction errors (40060/10062).
+
+**Data backfill & maintenance scripts**
+
+- `scripts/check_derived_roles.js` — Inspect the database and report how many characters would be assigned each main role when deriving role from class+spec.
+- `scripts/dump_roles.js` — Dump distinct roles and sample rows from the DB to help diagnose missing role values.
+- `scripts/backfill_roles.js` — Backfill legacy rows where `guild_members.role` is NULL by deriving role from `spec` + `class`. Run this once after upgrading to the role-derivation logic:
+
+```powershell
+node scripts/backfill_roles.js
+```
+
+Backfill is idempotent and safe to run in most cases; review the script output before committing changes to production.
+
 
 **/characters** — Manage your claimed characters:
    • `/characters claim <character>` — Claim a character as your own
