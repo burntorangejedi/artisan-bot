@@ -43,6 +43,7 @@ module.exports = {
         .addSubcommand(sub => sub
             .setName('role')
             .setDescription('List all characters with the supplied main role (Tank/Healer/etc)')
+            .addStringOption(opt => opt.setName('role').setDescription('Main role (Tank/Healer/Melee DPS/Ranged DPS)').setRequired(true).setAutocomplete(true))
         )
         .addSubcommand(sub => sub
             .setName('class')

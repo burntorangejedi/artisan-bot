@@ -258,7 +258,8 @@ Total changes (approx): ${totalChanges}`;
             }
             await interaction.editReply(`Removed roles: ${removed.length ? removed.join(', ') : 'None found'}`);
         } else if (subcommand === 'import-grm') {
-            await interaction.deferReply({ ephemeral: true });
+            // Use flags:64 for ephemeral to avoid deprecation warning
+            await interaction.deferReply({ flags: 64 });
             const file = interaction.options.getAttachment('file');
             if (!file) {
                 return interaction.editReply('No file uploaded. Please attach your Guild_Roster_Manager.lua file.');
