@@ -55,6 +55,12 @@ class Settings {
   get KEYVAULT_URL() {
     return process.env.KEYVAULT_URL;
   }
+  get ORDERS_CHANNEL_ID() {
+    return process.env.ORDERS_CHANNEL_ID;
+  }
+  get ORDERS_PING_ROLE_ID() {
+    return process.env.ORDERS_PING_ROLE_ID;
+  }
 }
 
 module.exports = new Settings();

@@ -91,6 +91,27 @@ db.serialize(() => {
 	db.run('CREATE INDEX IF NOT EXISTS idx_character_recipes_profession_id ON character_recipes(profession_id)');
 	db.run('CREATE INDEX IF NOT EXISTS idx_character_recipes_recipe_id ON character_recipes(recipe_id)');
 
+	// Orders table for in-need requests
+	db.run(`
+		CREATE TABLE IF NOT EXISTS orders (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			requester_discord_id TEXT NOT NULL,
+			recipe_id INTEGER,
+			item_id INTEGER,
+			recipe_name TEXT,
+			note TEXT,
+			status TEXT DEFAULT 'open', -- open | in_progress | completed
+			crafter_discord_id TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			started_at DATETIME,
+			completed_at DATETIME,
+			start_note TEXT,
+			complete_note TEXT
+		)
+	`);
+	db.run('CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)');
+	db.run('CREATE INDEX IF NOT EXISTS idx_orders_requester ON orders(requester_discord_id)');
+
 	debug.log("... database table creation complete!");
 
 	// Initialize master data after tables and indexes are created
@@ -257,6 +278,78 @@ async function getProfessionsForCharacter(characterName) {
 			[characterName],
 			(err, rows) => err ? reject(err) : resolve(rows.map(row => row.profession))
 		);
+	});
+}
+
+// =============================
+// Orders API
+// =============================
+
+async function createOrder({ requesterDiscordId, recipeId, itemId, recipeName, note }) {
+	return new Promise((resolve, reject) => {
+		db.run(
+			`INSERT INTO orders (requester_discord_id, recipe_id, item_id, recipe_name, note, status) VALUES (?, ?, ?, ?, ?, 'open')`,
+			[requesterDiscordId, recipeId || null, itemId || null, recipeName || null, note || null],
+			function (err) {
+				if (err) return reject(err);
+				resolve({ id: this.lastID });
+			}
+		);
+	});
+}
+
+async function listOpenOrders() {
+	return new Promise((resolve, reject) => {
+		db.all(`SELECT * FROM orders WHERE status = 'open' ORDER BY created_at DESC`, [], (err, rows) => {
+			if (err) return reject(err);
+			resolve(rows);
+		});
+	});
+}
+
+async function listOrdersForRequester(discordId) {
+	return new Promise((resolve, reject) => {
+		db.all(`SELECT * FROM orders WHERE requester_discord_id = ? ORDER BY created_at DESC`, [discordId], (err, rows) => {
+			if (err) return reject(err);
+			resolve(rows);
+		});
+	});
+}
+
+async function startOrder(orderId, crafterDiscordId, startNote) {
+	return new Promise((resolve, reject) => {
+		db.run(`UPDATE orders SET status='in_progress', crafter_discord_id = ?, started_at = CURRENT_TIMESTAMP, start_note = ? WHERE id = ? AND status = 'open'`, [crafterDiscordId, startNote || null, orderId], function (err) {
+			if (err) return reject(err);
+			resolve({ changes: this.changes });
+		});
+	});
+}
+
+async function completeOrder(orderId, crafterDiscordId, completeNote) {
+	return new Promise((resolve, reject) => {
+		db.run(`UPDATE orders SET status='completed', completed_at = CURRENT_TIMESTAMP, complete_note = ? WHERE id = ? AND crafter_discord_id = ? AND status = 'in_progress'`, [completeNote || null, orderId, crafterDiscordId], function (err) {
+			if (err) return reject(err);
+			resolve({ changes: this.changes });
+		});
+	});
+}
+
+// Helper search functions for ineed flow
+async function searchRecipesByName(query, limit = 25) {
+	return new Promise((resolve, reject) => {
+		db.all(`SELECT id, recipe_name, item_id FROM recipes WHERE recipe_name LIKE ? LIMIT ?`, ['%' + query + '%', limit], (err, rows) => {
+			if (err) return reject(err);
+			resolve(rows);
+		});
+	});
+}
+
+async function searchRecipesByItemId(itemId) {
+	return new Promise((resolve, reject) => {
+		db.all(`SELECT id, recipe_name, item_id FROM recipes WHERE item_id = ? LIMIT 25`, [itemId], (err, rows) => {
+			if (err) return reject(err);
+			resolve(rows);
+		});
 	});
 }
 
